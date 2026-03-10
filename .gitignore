@@ -3,8 +3,18 @@ node_modules/
 .pnp
 .pnp.js
 
+# Hardhat
+artifacts/
+cache/
+typechain/
+typechain-types/
+coverage/
+coverage.json
+
+# Ignition
+ignition/deployments/
+
 # Testing
-/coverage
 /.nyc_output
 
 # Production
