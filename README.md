@@ -1,39 +1,139 @@
-# Token42: Decentralized AI Dating Platform
+<p align="center">
+  <h1 align="center">💎 Token42</h1>
+  <p align="center"><strong>Decentralized AI Dating Platform on Polkadot</strong></p>
+  <p align="center">
+    <em>Verifiable Identity · Private AI Matching · Staked Connections</em>
+  </p>
+</p>
 
-Token42 is a next-generation dating platform built on Polkadot, leveraging AI to bridge the "Trust Gap" through verifiable identity and staked interactions.
+<p align="center">
+  <img src="https://img.shields.io/badge/Solidity-0.8.20-363636?logo=solidity" alt="Solidity" />
+  <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black" alt="React" />
+  <img src="https://img.shields.io/badge/Foundry-Latest-yellow" alt="Foundry" />
+  <img src="https://img.shields.io/badge/Polkadot-Paseo_Testnet-E6007A?logo=polkadot&logoColor=white" alt="Polkadot" />
+  <img src="https://img.shields.io/badge/Phala-TEE_Agents-CDFA50" alt="Phala" />
+</p>
+
+---
+
+## 📖 Overview
+
+Token42 is a next-generation dating platform that solves the **"Trust Gap"** in online dating. By combining Polkadot's verifiable identity infrastructure with AI-powered matching inside secure enclaves, Token42 ensures that every user is a **real human**, every match is **privately computed**, and every interaction is **economically accountable**.
+
+> The name represents the search for the ultimate connection in a verifiable, tokenized world.
+
+---
 
 ## 🚀 Key Features
 
-- **Verifiable Identity**: Connect with real humans verified via Polkadot's People Chain.
-- **AI Matching**: Private personality analysis inside Phala Network's secure enclaves (TEE).
-- **Staked Messaging**: Anti-spam protocol using rUSD staking to ensure high-value connections.
-- **Soulbound Profiles**: Non-transferable digital identities on the Revive EVM.
+| Feature | Description |
+|---|---|
+| 🪪 **Verifiable Identity** | Proof-of-Humanity via Polkadot People Chain Identity Precompile |
+| 🤖 **Private AI Matching** | Personality vectors analyzed inside Phala TEE — even developers can't see your data |
+| 💰 **Staked Messaging** | Senders lock rUSD to message; recipients claim it by replying — making spam unprofitable |
+| 🏷️ **Soulbound Profiles** | Non-transferable ERC-721 tokens ensure one real identity per person |
+| 🛡️ **AI Moderation Oracle** | Automated harassment detection with on-chain slashing penalties |
+
+---
+
+## 🏗️ Architecture
+
+Token42 is built on a **four-layer decentralized stack**:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    🖥️  FRONTEND (React/Vite)                │
+│         Wallet Connection · Profile UI · Chat Interface     │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌──────────────────┐    ┌──────────────────────────────┐   │
+│  │  🪪 IDENTITY      │    │  🧠 INTELLIGENCE             │   │
+│  │  People Chain     │    │  Phala Network TEE           │   │
+│  │  (DID / Precomp.) │    │  Llama-3-8B Vectorization    │   │
+│  │  0x...901         │    │  Cosine Similarity Matching  │   │
+│  └────────┬─────────┘    │  Match Intent Signing        │   │
+│           │              └──────────────┬───────────────┘   │
+│           ▼                             ▼                   │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │              ⚙️  LOGIC LAYER (Revive EVM)             │   │
+│  │  Token42Profile.sol      Token42Messaging.sol         │   │
+│  │  • Soulbound Tokens      • rUSD Staking               │   │
+│  │  • Identity Checks       • Signature Verification     │   │
+│  │  • CID Storage           • Slashing Oracle            │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                             ▼                               │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │          📦  STORAGE LAYER (Crust / IPFS)             │   │
+│  │  Encrypted bios · Profile media · Metadata CIDs       │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🧰 Technology Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| **Smart Contracts** | Solidity 0.8.20, OpenZeppelin, Foundry | Profile SBTs, staked messaging, slashing |
+| **Runtime** | Polkadot Asset Hub (Revive EVM / PolkaVM) | EVM-compatible execution on Polkadot |
+| **Identity** | Paseo People Chain, Identity Precompile (`0x...901`) | On-chain human verification (DID) |
+| **AI Engine** | Phala Network TEE, Llama-3-8B | Private personality vectorization & matching |
+| **Storage** | Crust Network / IPFS | Decentralized media & metadata hosting |
+| **Frontend** | React 18, TypeScript, Vite, ethers.js | Mobile-responsive dApp interface |
+| **Wallets** | SubWallet, Talisman, MetaMask | Transaction signing & identity proofs |
+| **Testing** | Foundry (forge test), vm.etch mocking | Contract unit & integration tests |
+
+---
+
+## 📂 Project Structure
+
+```
+token42/
+├── contracts/               # Solidity smart contracts (Foundry)
+│   ├── src/
+│   │   ├── Token42Profile.sol      # Soulbound profile tokens
+│   │   └── Token42Messaging.sol    # Staked messaging & slashing
+│   ├── test/
+│   │   ├── Token42Profile.t.sol    # Profile contract tests
+│   │   └── Token42Messaging.t.sol  # Messaging contract tests
+│   ├── remappings.txt
+│   └── foundry.toml
+├── agent/                   # Phala TEE AI Agent
+│   └── src/
+│       └── index.ts                # Matching engine & signing
+├── frontend/                # React dApp
+│   └── src/
+│       ├── App.tsx                 # Main application component
+│       └── App.css                 # Styling
+├── .gitignore
+└── README.md
+```
 
 ---
 
 ## 🛠️ Onboarding & Installation
 
-This guide assumes you have **Node.js and npm** installed.
+> **Prerequisites:** Node.js and npm installed.
 
-### 1. Clone & Setup
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/GReturn/Project-Token42.git
 cd Project-Token42
 ```
 
-### 2. Install Smart Contract Tools (Foundry)
-
-Since the contracts are built using Foundry, you'll need it to build and test. Run the following command to install it:
+### 2. Install Foundry (Smart Contract Toolchain)
 
 **Windows (PowerShell):**
 ```powershell
-set-executionpolicy remotesigned -scope currentuser
-iex (new-object net.webclient).downloadstring('https://foundry.paradigm.xyz/install.ps1')
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+iex (New-Object Net.WebClient).DownloadString('https://foundry.paradigm.xyz/install.ps1')
 foundryup
 ```
 
-**macOS/Linux:**
+**macOS / Linux:**
 ```bash
 curl -L https://foundry.paradigm.xyz | bash
 foundryup
@@ -43,17 +143,17 @@ foundryup
 
 ```bash
 cd contracts
-npm install  # Installs OpenZeppelin dependencies
-forge build
-forge test
+npm install        # Installs OpenZeppelin
+forge build        # Compiles contracts
+forge test         # Runs all tests
 ```
 
-### 4. Run the AI Agent Local Demo
+### 4. Run the AI Agent (Local Demo)
 
 ```bash
 cd ../agent
 npm install
-npm run start # or node src/index.ts
+npx ts-node src/index.ts
 ```
 
 ### 5. Launch the Frontend
@@ -64,21 +164,31 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:5173`.
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## 🏗️ Technical Architecture
+## 🔄 User Flow
 
-- **Identity Layer**: Polkadot People Chain (DID).
-- **Logic Layer**: Asset Hub / Revive EVM (Solidity SBTs).
-- **Intelligence Layer**: Phala Network (TEE AI Agents).
-- **Storage Layer**: Crust Network (IPFS/CIDs).
+```
+Connect Wallet  ──►  Verify Identity  ──►  Mint SBT Profile  ──►  AI Matching  ──►  Stake & Chat
+     │                    │                      │                     │                  │
+  SubWallet /         People Chain           Token42Profile       Phala TEE Agent    Token42Messaging
+  Talisman            Precompile 0x901       (Soulbound)         Cosine Similarity   rUSD Lock/Claim
+```
 
 ---
 
-## 🌍 Sustainable Development Goals (SDG)
+## 🌍 SDG Alignment
 
-Token42 aligns with:
-- **SDG 5 (Gender Equality)**: Protecting users from harassment via AI moderation and staking.
-- **SDG 16 (Peace, Justice & Strong Institutions)**: Providing sovereign identity ownership.
+| SDG | Impact |
+|---|---|
+| **SDG 5 — Gender Equality** | AI moderation + staking reduces harassment; economic penalties deter bad actors |
+| **SDG 16 — Peace, Justice & Strong Institutions** | Sovereign decentralized identity; no central authority owns your data |
+
+---
+
+## 📜 License
+
+MIT
+
