@@ -18,7 +18,7 @@ This guide assumes you have **Node.js and npm** installed.
 ### 1. Clone & Setup
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/GReturn/Project-Token42.git
 cd token42
 ```
 
