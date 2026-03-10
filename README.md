@@ -53,7 +53,7 @@ Token42 is built on a **four-layer decentralized stack**:
 │  │  (DID / Precomp.) │    │  Llama-3-8B Vectorization   │   │
 │  │  0x...901         │    │  Cosine Similarity Matching │   │
 │  └────────┬──────────┘    │  Match Intent Signing       │   │
-│           │              └──────────────┬───────────────┘   │
+│           │               └─────────────┬───────────────┘   │
 │           ▼                             ▼                   │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │               LOGIC LAYER (Revive EVM)               │   │
