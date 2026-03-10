@@ -29,10 +29,10 @@ Token42 is a next-generation dating platform that solves the **"Trust Gap"** in 
 
 | Feature | Description |
 |---|---|
-| 🪪 **Verifiable Identity** | Proof-of-Humanity via Polkadot People Chain Identity Precompile |
-| 🤖 **Private AI Matching** | Personality vectors analyzed inside Phala TEE — even developers can't see your data |
-| 💰 **Staked Messaging** | Senders lock rUSD to message; recipients claim it by replying — making spam unprofitable |
-| 🏷️ **Soulbound Profiles** | Non-transferable ERC-721 tokens ensure one real identity per person |
+| 🪪 **Verifiable Identity** | Proof-of-Humanity via Polkadot People Chain Identity Precompile. Connect with real humans verified via Polkadot's People Chain. |
+| 🤖 **Private AI Matching** | Personality vectors analyzed inside Phala TEE — even developers can't see your data. Private personality analysis inside Phala Network's secure enclaves (TEE). |
+| 💰 **Staked Messaging** | Senders lock rUSD to message; recipients claim it by replying — making spam unprofitable. Anti-spam protocol using rUSD staking to ensure high-value connections. |
+| 🏷️ **Soulbound Profiles** | Non-transferable ERC-721 tokens ensure one real identity per person. Non-transferable digital identities on the Revive EVM. |
 | 🛡️ **AI Moderation Oracle** | Automated harassment detection with on-chain slashing penalties |
 
 ---
@@ -125,6 +125,8 @@ cd Project-Token42
 ```
 
 ### 2. Install Foundry (Smart Contract Toolchain)
+
+Since the contracts are built using Foundry, you'll need it to build and test. Run the following command to install it:
 
 **Windows (PowerShell):**
 ```powershell
