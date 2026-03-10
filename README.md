@@ -190,5 +190,4 @@ Connect Wallet  ──►  Verify Identity  ──►  Mint SBT Profile  ──�
 
 ## 📜 License
 
-MIT
-
+none yet
