@@ -7,12 +7,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Solidity-0.8.20-363636?logo=solidity" alt="Solidity" />
+  <img src="https://img.shields.io/badge/Solidity-0.8.28-363636?logo=solidity" alt="Solidity" />
   <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black" alt="React" />
-  <img src="https://img.shields.io/badge/Foundry-Latest-yellow" alt="Foundry" />
+  <img src="https://img.shields.io/badge/Hardhat-PolkaVM-FFF100?logo=hardhat" alt="Hardhat" />
   <img src="https://img.shields.io/badge/Polkadot-Paseo_Testnet-E6007A?logo=polkadot&logoColor=white" alt="Polkadot" />
   <img src="https://img.shields.io/badge/Phala-TEE_Agents-CDFA50" alt="Phala" />
+  <img src="https://img.shields.io/badge/DevContainer-Ready-blue?logo=docker" alt="DevContainer" />
 </p>
 
 ---
@@ -76,14 +77,15 @@ Token42 is built on a **four-layer decentralized stack**:
 
 | Layer | Technology | Purpose |
 |---|---|---|
-| **Smart Contracts** | Solidity 0.8.20, OpenZeppelin, Foundry | Profile SBTs, staked messaging, slashing |
+| **Smart Contracts** | Solidity 0.8.28, Minimal impls (no OZ), Hardhat | Profile SBTs, staked messaging, slashing |
 | **Runtime** | Polkadot Asset Hub (Revive EVM / PolkaVM) | EVM-compatible execution on Polkadot |
 | **Identity** | Paseo People Chain, Identity Precompile (`0x...901`) | On-chain human verification (DID) |
 | **AI Engine** | Phala Network TEE, Llama-3-8B | Private personality vectorization & matching |
 | **Storage** | Crust Network / IPFS | Decentralized media & metadata hosting |
 | **Frontend** | React 18, TypeScript, Vite, ethers.js | Mobile-responsive dApp interface |
 | **Wallets** | SubWallet, Talisman, MetaMask | Transaction signing & identity proofs |
-| **Testing** | Foundry (forge test), vm.etch mocking | Contract unit & integration tests |
+| **Testing** | Hardhat (npx hardhat test) | Contract unit & integration tests |
+| **Dev Env** | DevContainers, Kitdot CLI | Zero-config development environment |
 
 ---
 
@@ -91,22 +93,26 @@ Token42 is built on a **four-layer decentralized stack**:
 
 ```
 token42/
-├── contracts/               # Solidity smart contracts (Foundry)
-│   ├── src/
-│   │   ├── Token42Profile.sol      # Soulbound profile tokens
-│   │   └── Token42Messaging.sol    # Staked messaging & slashing
-│   ├── test/
-│   │   ├── Token42Profile.t.sol    # Profile contract tests
-│   │   └── Token42Messaging.t.sol  # Messaging contract tests
-│   ├── remappings.txt
-│   └── foundry.toml
-├── agent/                   # Phala TEE AI Agent
-│   └── src/
-│       └── index.ts                # Matching engine & signing
-├── frontend/                # React dApp
-│   └── src/
-│       ├── App.tsx                 # Main application component
-│       └── App.css                 # Styling
+├── .devcontainer/               # DevContainer setup (Docker + VS Code)
+│   ├── devcontainer.json
+│   ├── Dockerfile
+│   └── scripts/                 # Setup & initialization scripts
+├── contracts/                   # Hardhat-compatible (Solidity ^0.8.28, no OZ)
+│   ├── Token42Profile.sol       # Minimal soulbound profile
+│   ├── Token42Messaging.sol     # Minimal staked messaging
+│   └── MockRUSD.sol             # Test mock ERC-20
+├── ignition/modules/            # Hardhat Ignition deployment
+│   └── Token42Module.js
+├── test/                        # Hardhat tests
+│   ├── Token42Profile.test.js
+│   └── Token42Messaging.test.js
+├── agent/                       # Phala TEE AI Agent
+│   └── src/index.ts
+├── frontend/                    # React dApp
+├── guides/
+│   ├── AGENTS.md                # AI agent instructions
+│   └── KITDOT_HACKATHON_GUIDE.md # Development guide
+├── hardhat.config.js            # Hardhat + PolkaVM config
 ├── .gitignore
 └── README.md
 ```
@@ -115,58 +121,57 @@ token42/
 
 ## 🛠️ Onboarding & Installation
 
-> **Prerequisites:** Node.js and npm installed.
+> **Prerequisites:** Node.js 22+ and npm, or Docker for DevContainers.
 
-### 1. Clone the Repository
+### Option A: DevContainer (RECOMMENDED)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop) and the [VS Code Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+2. Open this project in VS Code
+3. Click **"Reopen in Container"** — all tools install automatically
+
+### Option B: Kitdot CLI
+
+```bash
+npm install -g kitdot
+kitdot init token42
+cd token42
+```
+
+### Option C: Manual Setup
 
 ```bash
 git clone https://github.com/GReturn/Project-Token42.git
 cd Project-Token42
 ```
 
-### 2. Install Foundry (Smart Contract Toolchain)
-
-Since the contracts are built using Foundry, you'll need it to build and test. Run the following command to install it:
-
-**Windows (PowerShell):**
-```powershell
-Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
-iex (New-Object Net.WebClient).DownloadString('https://foundry.paradigm.xyz/install.ps1')
-foundryup
-```
-
-**macOS / Linux:**
-```bash
-curl -L https://foundry.paradigm.xyz | bash
-foundryup
-```
-
-### 3. Build & Test Contracts
+#### Hardhat (PolkaVM / Recommended)
 
 ```bash
-cd contracts
-npm install        # Installs OpenZeppelin
-forge build        # Compiles contracts
-forge test         # Runs all tests
+npm install --save-dev @parity/hardhat-polkadot solc@0.8.28
+npm install --force @nomicfoundation/hardhat-toolbox
+npx hardhat compile
+npx hardhat test
 ```
 
-### 4. Run the AI Agent (Local Demo)
+### Run the AI Agent (Local Demo)
 
 ```bash
-cd ../agent
+cd agent
 npm install
 npx ts-node src/index.ts
 ```
 
-### 5. Launch the Frontend
+### Launch the Frontend
 
 ```bash
-cd ../frontend
+cd frontend
 npm install
 npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+> 📖 See [guides/KITDOT_HACKATHON_GUIDE.md](guides/KITDOT_HACKATHON_GUIDE.md) for the full development workflow.
 
 ---
 
