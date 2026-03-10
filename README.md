@@ -19,7 +19,7 @@ This guide assumes you have **Node.js and npm** installed.
 
 ```bash
 git clone https://github.com/GReturn/Project-Token42.git
-cd token42
+cd Project-Token42
 ```
 
 ### 2. Install Smart Contract Tools (Foundry)
