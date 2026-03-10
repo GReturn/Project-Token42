@@ -110,8 +110,8 @@ npx hardhat console --network passetHub
 
 | Setting | Value |
 |---|---|
-| **Chain ID** | `420420422` |
-| **RPC URL** | `https://testnet-passet-hub-eth-rpc.polkadot.io` |
+| **Chain ID** | `420420417` |
+| **RPC URL** | `https://eth-rpc-testnet.polkadot.io` |
 | **Explorer** | [blockscout-passet-hub.parity-testnet.parity.io](https://blockscout-passet-hub.parity-testnet.parity.io/) |
 | **Faucet** | [faucet.polkadot.io](https://faucet.polkadot.io/?parachain=1111) |
 | **Currency** | PAS |
@@ -130,7 +130,7 @@ module.exports = {
     hardhat: { polkavm: true },
     passetHub: {
       polkavm: true,
-      url: "https://testnet-passet-hub-eth-rpc.polkadot.io",
+      url: "https://eth-rpc-testnet.polkadot.io",
       accounts: [vars.get("PRIVATE_KEY")],
     },
   },

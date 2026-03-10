@@ -1,4 +1,4 @@
-ETH_RPC_URL="https://testnet-passet-hub-eth-rpc.polkadot.io"
+ETH_RPC_URL="https://eth-rpc-testnet.polkadot.io"
 
 SECRET=$(jq -r '.secretSeed' ~/.address.json)
 EVM_ADDRESS=$(cast wallet address --private-key "$SECRET")
