@@ -43,29 +43,29 @@ Token42 is built on a **four-layer decentralized stack**:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    🖥️  FRONTEND (React/Vite)                │
+│                       FRONTEND (React/Vite)                 │
 │         Wallet Connection · Profile UI · Chat Interface     │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  ┌──────────────────┐    ┌──────────────────────────────┐   │
-│  │  🪪 IDENTITY      │    │  🧠 INTELLIGENCE             │   │
-│  │  People Chain     │    │  Phala Network TEE           │   │
-│  │  (DID / Precomp.) │    │  Llama-3-8B Vectorization    │   │
-│  │  0x...901         │    │  Cosine Similarity Matching  │   │
-│  └────────┬─────────┘    │  Match Intent Signing        │   │
+│  ┌───────────────────┐    ┌─────────────────────────────┐   │
+│  │    IDENTITY       │    │      INTELLIGENCE           │   │
+│  │  People Chain     │    │  Phala Network TEE          │   │
+│  │  (DID / Precomp.) │    │  Llama-3-8B Vectorization   │   │
+│  │  0x...901         │    │  Cosine Similarity Matching │   │
+│  └────────┬──────────┘    │  Match Intent Signing       │   │
 │           │              └──────────────┬───────────────┘   │
 │           ▼                             ▼                   │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │              ⚙️  LOGIC LAYER (Revive EVM)             │   │
-│  │  Token42Profile.sol      Token42Messaging.sol         │   │
-│  │  • Soulbound Tokens      • rUSD Staking               │   │
-│  │  • Identity Checks       • Signature Verification     │   │
-│  │  • CID Storage           • Slashing Oracle            │   │
+│  │               LOGIC LAYER (Revive EVM)               │   │
+│  │  Token42Profile.sol      Token42Messaging.sol        │   │
+│  │  • Soulbound Tokens      • rUSD Staking              │   │
+│  │  • Identity Checks       • Signature Verification    │   │
+│  │  • CID Storage           • Slashing Oracle           │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                             ▼                               │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │          📦  STORAGE LAYER (Crust / IPFS)             │   │
-│  │  Encrypted bios · Profile media · Metadata CIDs       │   │
+│  │            STORAGE LAYER (Crust / IPFS)              │   │
+│  │  Encrypted bios · Profile media · Metadata CIDs      │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
