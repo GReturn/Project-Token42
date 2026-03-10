@@ -1,9 +1,5 @@
-# Prioritize scripts in the mounted project folder for live updates
-if [ -d "/project/.devcontainer/scripts/devtool-scripts" ]; then
-  BASE_DIR="/project/.devcontainer/scripts"
-else
-  BASE_DIR="/usr/local/bin"
-fi
+# Absolute paths for the mounted project folder
+BASE_DIR="/project/.devcontainer/scripts"
 
 source $BASE_DIR/devtool-scripts/constants.sh
 source $BASE_DIR/devtool-scripts/$1.sh

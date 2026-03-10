@@ -30,7 +30,7 @@ echo -e "
 EVM Address: ${BOLD}${EVM_ADDRESS}${STYLE_END}
 ${BOLD}${ITALIC}${RED}Note:${STYLE_END} ${ITALIC}${GREY}Do not use this address for anything of real value${STYLE_END}
 
-$(bash devtools check-balance)
+$(bash /project/.devcontainer/scripts/devtools.sh check-balance)
 Paste the address into the ${LINK_START}${BLUE}Paseo Smart Contract faucet${LINK_END}${STYLE_END} to receive tokens for testing your contracts!
 
 "

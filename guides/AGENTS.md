@@ -50,8 +50,8 @@ npx hardhat console --network passetHub
 
 ### Paseo TestNet (Primary)
 
-- **Chain ID:** 420420422 (0x1911f0a6)
-- **RPC:** https://testnet-passet-hub-eth-rpc.polkadot.io
+- **Chain ID:** 420420417 (0x190f1b41)
+- **RPC:** https://eth-rpc-testnet.polkadot.io
 - **Explorer:** https://blockscout-passet-hub.parity-testnet.parity.io
 - **Faucet:** https://faucet.polkadot.io/?parachain=1111
 - **Currency:** PAS
@@ -69,7 +69,7 @@ module.exports = {
   networks: {
     passetHub: {
       polkavm: true,
-      url: "https://testnet-passet-hub-eth-rpc.polkadot.io",
+      url: "https://eth-rpc-testnet.polkadot.io",
       accounts: [vars.get("PRIVATE_KEY")],
     },
   },
@@ -228,7 +228,7 @@ contract SimpleReentrancyGuard {
 
 1. **Compile:** `npx hardhat compile`
 2. **Test locally:** `npx hardhat test`
-3. **Deploy to testnet:** `npx hardhat ignition deploy ./ignition/modules/Module.js --network passetHub`
+3. **Deploy to testnet:** `npx hardhat ignition deploy ./ignition/modules/Token42Module.js --network passetHub`
 4. **Verify:** Check on block explorer
 5. **Test integration:** Verify frontend connection
 
