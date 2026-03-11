@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
 
-// Contract Addresses (Placeholders for Paseo Testnet)
-const PROFILE_CONTRACT_ADDRESS = "0x...";
-const MESSAGING_CONTRACT_ADDRESS = "0x...";
+// Contract Addresses (Paseo Asset Hub - PolkaVM)
+const PROFILE_CONTRACT_ADDRESS = "0xf7cA780f3ad9173108fCd90dF0c156E1715EFf46";
+const MESSAGING_CONTRACT_ADDRESS = "0x5f963C7599990c941217E1d0D317F601dC1794CE";
 
 function App() {
   const [address, setAddress] = useState<string | null>(null);

@@ -39,11 +39,11 @@ export class Token42Agent {
      * @dev Sign a "Match Intent" payload that the Smart Contract can verify.
      */
     public async signMatch(userA: string, userB: string, score: number): Promise<string> {
-        const messageHash = ethers.utils.solidityKeccak256(
+        const messageHash = ethers.solidityPackedKeccak256(
             ['address', 'address', 'uint256'],
             [userA, userB, Math.floor(score * 100)]
         );
-        return await this.agentWallet.signMessage(ethers.utils.arrayify(messageHash));
+        return await this.agentWallet.signMessage(ethers.getBytes(messageHash));
     }
 
     /**
@@ -83,15 +83,15 @@ async function main() {
     const agent = new Token42Agent(ethers.Wallet.createRandom().privateKey);
 
     const userA = {
-        address: "0x123...",
+        address: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf", // Use a valid address
         personalityVector: [0.1, 0.9, 0.3, 0.5],
-        cid: "Qm..."
+        cid: "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco"
     };
 
     const userB = {
-        address: "0x456...",
+        address: "0x375ac89e80AE2169EC049B5780831A58bab5f7e3", // Use the deployer address
         personalityVector: [0.15, 0.85, 0.35, 0.45],
-        cid: "Qm..."
+        cid: "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco"
     };
 
     const matchResult = await agent.handleMatchRequest(userA, [userB]);
