@@ -153,15 +153,23 @@ npx hardhat compile
 npx hardhat test
 ```
 
+### 🚀 Deployment Status (Paseo Asset Hub)
+
+The contracts are live on the **Paseo Asset Hub (Revive EVM)**:
+- **Token42Profile**: `0xf7cA780f3ad9173108fCd90dF0c156E1715EFf46`
+- **Token42Messaging**: `0x5f963C7599990c941217E1d0D317F601dC1794CE`
+
 ### Run the AI Agent (Local Demo)
 
+The agent simulates the TEE environment and matching logic.
 ```bash
-cd agent
-npm install
-npx ts-node src/index.ts
+# Recommended: Run with tsx for seamless ESM support
+npx tsx agent/src/index.ts
 ```
 
 ### Launch the Frontend
+
+**Note:** If you are using a DevContainer and encounter port-forwarding issues (`code-tunnel.exe` errors), run the frontend directly on your **host machine (Windows)** terminal.
 
 ```bash
 cd frontend
@@ -170,6 +178,20 @@ npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+---
+
+## ⚠️ Hackathon Prototype Caveats
+
+> [!IMPORTANT]
+> This version of Token42 is a **Hackathon Prototype**. To facilitate the demonstration, the following elements are currently simplified or mocked:
+
+1.  **Mock Data**: The frontend initially populates some state with mock profile data to show the UI without waiting for IPFS/Contract indexing.
+2.  **Identity Simulation**: The People Chain identity check is simulated in the UI; in production, this calls the `0x...901` precompile via a `staticcall`.
+3.  **Storage**: While the architecture supports Crust/IPFS, the demo uses local JSON-RPC state and CID placeholders.
+4.  **Hardcoded Addresses**: The AI Agent's public key and contract addresses are hardcoded in `App.tsx` and `index.ts`.
+
+**FOR PRODUCTION:** These mocks should be replaced with the Phala SDK, Crust IPFS client, and real-time on-chain identity verification.
 
 > 📖 See [guides/KITDOT_HACKATHON_GUIDE.md](guides/KITDOT_HACKATHON_GUIDE.md) for the full development workflow.
 
