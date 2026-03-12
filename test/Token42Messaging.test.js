@@ -29,16 +29,17 @@ describe("Token42Messaging", function () {
             .approve(await messaging.getAddress(), hre.ethers.parseEther("100"));
     });
 
-    async function createSignature(senderAddr, recipientAddr, matchScore) {
+    async function createSignature(senderAddr, recipientAddr, matchScore, nonce) {
         const messageHash = hre.ethers.solidityPackedKeccak256(
-            ["address", "address", "uint256"],
-            [senderAddr, recipientAddr, matchScore]
+            ["address", "address", "uint256", "uint256"],
+            [senderAddr, recipientAddr, matchScore, nonce]
         );
         return await aiAgent.signMessage(hre.ethers.getBytes(messageHash));
     }
 
-    it("should stake for a message with valid AI signature", async function () {
-        const signature = await createSignature(sender.address, recipient.address, 85);
+    it("should stake for a message with valid AI signature and nonce", async function () {
+        const nonce = await messaging.nonces(sender.address);
+        const signature = await createSignature(sender.address, recipient.address, 85, nonce);
 
         await messaging.connect(sender).stakeForMessage(recipient.address, 85, signature);
 
@@ -50,43 +51,94 @@ describe("Token42Messaging", function () {
         const match = await messaging.matches(matchId);
         expect(match.sender).to.equal(sender.address);
         expect(match.active).to.equal(true);
-        expect(await mockRUSD.balanceOf(await messaging.getAddress())).to.equal(stakeAmount);
+        expect(await messaging.nonces(sender.address)).to.equal(nonce + 1n);
+    });
+
+    it("should prevent signature replay", async function () {
+        const nonce = await messaging.nonces(sender.address);
+        const signature = await createSignature(sender.address, recipient.address, 85, nonce);
+
+        await messaging.connect(sender).stakeForMessage(recipient.address, 85, signature);
+        
+        // Attempt to reuse same signature
+        await expect(
+            messaging.connect(sender).stakeForMessage(recipient.address, 85, signature)
+        ).to.be.revertedWithCustomError(messaging, "InvalidSignature");
     });
 
     it("should reject low match scores", async function () {
-        const signature = await createSignature(sender.address, recipient.address, 50);
+        const nonce = await messaging.nonces(sender.address);
+        const signature = await createSignature(sender.address, recipient.address, 50, nonce);
 
         await expect(
             messaging.connect(sender).stakeForMessage(recipient.address, 50, signature)
-        ).to.be.revertedWith("Match score too low for staking");
+        ).to.be.revertedWithCustomError(messaging, "ScoreTooLow");
     });
 
-    it("should allow recipient to claim stake", async function () {
-        const signature = await createSignature(sender.address, recipient.address, 85);
+    it("should allow recipient to claim stake with protocol fee", async function () {
+        const nonce = await messaging.nonces(sender.address);
+        const signature = await createSignature(sender.address, recipient.address, 85, nonce);
         await messaging.connect(sender).stakeForMessage(recipient.address, 85, signature);
 
-        const initialBalance = await mockRUSD.balanceOf(recipient.address);
+        const initialRecipientBalance = await mockRUSD.balanceOf(recipient.address);
+        const initialOwnerBalance = await mockRUSD.balanceOf(owner.address);
+        
         await messaging.connect(recipient).claimStake(sender.address);
 
-        expect(await mockRUSD.balanceOf(recipient.address)).to.equal(initialBalance + stakeAmount);
+        const fee = (stakeAmount * 1000n) / 10000n;
+        const recipientAmount = stakeAmount - fee;
+
+        expect(await mockRUSD.balanceOf(recipient.address)).to.equal(initialRecipientBalance + recipientAmount);
+        expect(await mockRUSD.balanceOf(owner.address)).to.equal(initialOwnerBalance + fee);
     });
 
-    it("should allow AI Agent to slash stake", async function () {
-        const signature = await createSignature(sender.address, recipient.address, 85);
+    it("should allow any Admin to slash stake", async function () {
+        const nonce = await messaging.nonces(sender.address);
+        const signature = await createSignature(sender.address, recipient.address, 85, nonce);
         await messaging.connect(sender).stakeForMessage(recipient.address, 85, signature);
 
         const ownerBalance = await mockRUSD.balanceOf(owner.address);
+        // aiAgent is an admin by default from constructor
         await messaging.connect(aiAgent).slashStake(sender.address, recipient.address);
 
         expect(await mockRUSD.balanceOf(owner.address)).to.equal(ownerBalance + stakeAmount);
     });
 
-    it("should reject slash from non-AI Agent", async function () {
-        const signature = await createSignature(sender.address, recipient.address, 85);
+    it("should reject slash from non-Admin", async function () {
+        const nonce = await messaging.nonces(sender.address);
+        const signature = await createSignature(sender.address, recipient.address, 85, nonce);
         await messaging.connect(sender).stakeForMessage(recipient.address, 85, signature);
 
         await expect(
             messaging.connect(sender).slashStake(sender.address, recipient.address)
-        ).to.be.revertedWith("Only AI Agent can slash");
+        ).to.be.revertedWithCustomError(messaging, "NotAdmin");
+    });
+
+    it("should allow owner to add/remove admins", async function () {
+        const [_, __, ___, ____, newAdmin] = await hre.ethers.getSigners();
+        
+        await messaging.addAdmin(newAdmin.address);
+        expect(await messaging.isAdmin(newAdmin.address)).to.be.true;
+
+        await messaging.removeAdmin(newAdmin.address);
+        expect(await messaging.isAdmin(newAdmin.address)).to.be.false;
+    });
+
+    it("should allow admins to update parameters", async function () {
+        const newStake = hre.ethers.parseEther("2");
+        await messaging.connect(aiAgent).setStakeAmount(newStake);
+        expect(await messaging.stakeAmount()).to.equal(newStake);
+
+        await messaging.connect(aiAgent).setMinMatchScore(90);
+        expect(await messaging.minMatchScore()).to.equal(90);
+
+        await messaging.connect(aiAgent).setProtocolFee(500); // 5%
+        expect(await messaging.protocolFeeBps()).to.equal(500);
+    });
+
+    it("should reject protocol fee above 20%", async function () {
+        await expect(
+            messaging.connect(aiAgent).setProtocolFee(2500)
+        ).to.be.revertedWithCustomError(messaging, "InvalidAddress");
     });
 });

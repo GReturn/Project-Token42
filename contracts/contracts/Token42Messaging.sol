@@ -28,9 +28,14 @@ interface IERC20 {
  */
 contract Token42Messaging {
     IERC20 public immutable rUSD;
-    address public aiAgent;
     address public owner;
+    
+    mapping(address => bool) public isAdmin;
+    mapping(address => uint256) public nonces;
+
     uint256 public stakeAmount = 1 * 10 ** 18; // 1 rUSD
+    uint256 public minMatchScore = 80;
+    uint256 public protocolFeeBps = 1000; // 10% Protocol Fee
 
     struct MessageRequest {
         address sender;
@@ -41,68 +46,143 @@ contract Token42Messaging {
 
     mapping(bytes32 => MessageRequest) public matches;
 
+    // --- Custom Errors ---
+    error NotOwner();
+    error NotAdmin();
+    error InvalidSignature();
+    error ScoreTooLow();
+    error StakeTransferFailed();
+    error ClaimTransferFailed();
+    error SlashTransferFailed();
+    error NoActiveStake();
+    error NotRecipient();
+    error InvalidAddress();
+    error AlreadyAdmin();
+    error NotAnAdmin();
+    error CannotRemoveOwner();
+
     // --- Events ---
     event MessageStaked(
         address indexed sender,
         address indexed recipient,
-        uint256 amount
+        uint256 amount,
+        uint256 nonce
     );
     event MessageClaimed(
         address indexed recipient,
         address indexed sender,
-        uint256 amount
+        uint256 amount,
+        uint256 fee
     );
     event StakeSlashed(
         address indexed sender,
+        address indexed recipient,
         address indexed reviewer,
         uint256 amount
     );
+    event AdminAdded(address indexed account);
+    event AdminRemoved(address indexed account);
+    event StakeAmountUpdated(uint256 newAmount);
+    event MinMatchScoreUpdated(uint256 newScore);
+    event ProtocolFeeUpdated(uint256 newBps);
 
     // --- Modifiers ---
     modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
+        if (msg.sender != owner) revert NotOwner();
+        _;
+    }
+
+    modifier onlyAdmin() {
+        if (!isAdmin[msg.sender] && msg.sender != owner) revert NotAdmin();
         _;
     }
 
     constructor(address _rUSD, address _aiAgent) {
+        if (_rUSD == address(0) || _aiAgent == address(0)) revert InvalidAddress();
         rUSD = IERC20(_rUSD);
-        aiAgent = _aiAgent;
         owner = msg.sender;
+        isAdmin[_aiAgent] = true;
+        isAdmin[msg.sender] = true;
     }
 
     /**
-     * @dev Update the AI Agent address.
+     * @dev Add a new admin (e.g., another AI agent instance or human reviewer).
      */
-    function setAiAgent(address _aiAgent) external onlyOwner {
-        aiAgent = _aiAgent;
+    function addAdmin(address account) external onlyOwner {
+        if (account == address(0)) revert InvalidAddress();
+        if (isAdmin[account]) revert AlreadyAdmin();
+        isAdmin[account] = true;
+        emit AdminAdded(account);
+    }
+
+    /**
+     * @dev Remove an admin.
+     */
+    function removeAdmin(address account) external onlyOwner {
+        if (account == owner) revert CannotRemoveOwner();
+        if (!isAdmin[account]) revert NotAnAdmin();
+        isAdmin[account] = false;
+        emit AdminRemoved(account);
+    }
+
+    /**
+     * @dev Update the stake amount.
+     */
+    function setStakeAmount(uint256 _amount) external onlyAdmin {
+        stakeAmount = _amount;
+        emit StakeAmountUpdated(_amount);
+    }
+
+    /**
+     * @dev Update the minimum match score.
+     */
+    function setMinMatchScore(uint256 _score) external onlyAdmin {
+        minMatchScore = _score;
+        emit MinMatchScoreUpdated(_score);
+    }
+
+    /**
+     * @dev Update the protocol fee in basis points (100 BPS = 1%).
+     *      Max fee capped at 20% (2000 BPS) for safety.
+     */
+    function setProtocolFee(uint256 _bps) external onlyAdmin {
+        if (_bps > 2000) revert InvalidAddress(); // Reuse error for simplicity or add a specific one
+        protocolFeeBps = _bps;
+        emit ProtocolFeeUpdated(_bps);
     }
 
     /**
      * @dev Stake rUSD to message a recipient.
-     *      Requires a valid ECDSA signature from the AI Agent.
+     *      Requires a valid ECDSA signature from an Admin (typically the AI Agent).
+     *      Includes a nonce for replay protection.
      */
     function stakeForMessage(
         address recipient,
         uint256 matchScore,
         bytes calldata signature
     ) external {
-        // Verify AI Agent signature (EIP-191)
+        if (matchScore < minMatchScore) revert ScoreTooLow();
+
+        uint256 currentNonce = nonces[msg.sender];
+        
+        // Verify AI Agent / Admin signature (EIP-191)
         bytes32 messageHash = keccak256(
-            abi.encodePacked(msg.sender, recipient, matchScore)
+            abi.encodePacked(msg.sender, recipient, matchScore, currentNonce)
         );
         bytes32 ethSignedHash = keccak256(
             abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash)
         );
 
         address signer = _recover(ethSignedHash, signature);
-        require(signer == aiAgent, "Invalid AI Agent signature");
-        require(matchScore >= 80, "Match score too low for staking");
+        if (!isAdmin[signer]) revert InvalidSignature();
+
+        // Increment nonce for replay protection
+        nonces[msg.sender]++;
 
         // Transfer rUSD stake
-        require(
-            rUSD.transferFrom(msg.sender, address(this), stakeAmount),
-            "Stake failed"
-        );
+        if (!rUSD.transferFrom(msg.sender, address(this), stakeAmount)) {
+            revert StakeTransferFailed();
+        }
 
         bytes32 matchId = keccak256(abi.encodePacked(msg.sender, recipient));
         matches[matchId] = MessageRequest({
@@ -112,7 +192,7 @@ contract Token42Messaging {
             active: true
         });
 
-        emit MessageStaked(msg.sender, recipient, stakeAmount);
+        emit MessageStaked(msg.sender, recipient, stakeAmount, currentNonce);
     }
 
     /**
@@ -122,31 +202,42 @@ contract Token42Messaging {
         bytes32 matchId = keccak256(abi.encodePacked(sender, msg.sender));
         MessageRequest storage req = matches[matchId];
 
-        require(req.active, "No active stake found");
-        require(req.recipient == msg.sender, "Only recipient can claim");
+        if (!req.active) revert NoActiveStake();
+        if (req.recipient != msg.sender) revert NotRecipient();
 
         req.active = false;
-        require(rUSD.transfer(msg.sender, req.stake), "Claim transfer failed");
+        
+        uint256 fee = (req.stake * protocolFeeBps) / 10000;
+        uint256 recipientAmount = req.stake - fee;
 
-        emit MessageClaimed(msg.sender, sender, req.stake);
+        if (fee > 0) {
+            if (!rUSD.transfer(owner, fee)) revert ClaimTransferFailed();
+        }
+
+        if (!rUSD.transfer(msg.sender, recipientAmount)) {
+            revert ClaimTransferFailed();
+        }
+
+        emit MessageClaimed(msg.sender, sender, recipientAmount, fee);
     }
 
     /**
      * @dev Slash a sender's stake for harassment.
-     *      Only the AI Agent (oracle) can trigger this.
+     *      Only an Admin can trigger this.
      */
-    function slashStake(address sender, address recipient) external {
-        require(msg.sender == aiAgent, "Only AI Agent can slash");
-
+    function slashStake(address sender, address recipient) external onlyAdmin {
         bytes32 matchId = keccak256(abi.encodePacked(sender, recipient));
         MessageRequest storage req = matches[matchId];
 
-        require(req.active, "No active stake to slash");
+        if (!req.active) revert NoActiveStake();
 
         req.active = false;
-        require(rUSD.transfer(owner, req.stake), "Slash transfer failed");
+        // Slashed stakes go to the owner (governance treasury)
+        if (!rUSD.transfer(owner, req.stake)) {
+            revert SlashTransferFailed();
+        }
 
-        emit StakeSlashed(sender, msg.sender, req.stake);
+        emit StakeSlashed(sender, recipient, msg.sender, req.stake);
     }
 
     // --- Internal ECDSA Recovery ---
@@ -155,7 +246,7 @@ contract Token42Messaging {
         bytes32 hash,
         bytes memory sig
     ) internal pure returns (address) {
-        require(sig.length == 65, "Invalid signature length");
+        if (sig.length != 65) revert InvalidSignature();
 
         bytes32 r;
         bytes32 s;
@@ -168,7 +259,7 @@ contract Token42Messaging {
         }
 
         if (v < 27) v += 27;
-        require(v == 27 || v == 28, "Invalid signature v value");
+        if (v != 27 && v != 28) revert InvalidSignature();
 
         return ecrecover(hash, v, r, s);
     }
