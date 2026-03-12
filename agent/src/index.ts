@@ -37,11 +37,12 @@ export class Token42Agent {
 
     /**
      * @dev Sign a "Match Intent" payload that the Smart Contract can verify.
+     * Includes a nonce for replay protection.
      */
-    public async signMatch(userA: string, userB: string, score: number): Promise<string> {
+    public async signMatch(userA: string, userB: string, score: number, nonce: number): Promise<string> {
         const messageHash = ethers.solidityPackedKeccak256(
-            ['address', 'address', 'uint256'],
-            [userA, userB, Math.floor(score * 100)]
+            ['address', 'address', 'uint256', 'uint256'],
+            [userA, userB, Math.floor(score * 100), nonce]
         );
         return await this.agentWallet.signMessage(ethers.getBytes(messageHash));
     }
@@ -49,7 +50,7 @@ export class Token42Agent {
     /**
      * @dev Handle matching request.
      */
-    public async handleMatchRequest(currentUser: UserProfile, potentialMatches: UserProfile[]) {
+    public async handleMatchRequest(currentUser: UserProfile, potentialMatches: UserProfile[], nonce: number) {
         console.log(`Matching for ${currentUser.address}...`);
 
         const results = potentialMatches.map(match => ({
@@ -65,7 +66,7 @@ export class Token42Agent {
         console.log(`Top match: ${topMatch.address} with score ${topMatch.score}`);
 
         if (topMatch.score > 0.8) {
-            const signature = await this.signMatch(currentUser.address, topMatch.address, topMatch.score);
+            const signature = await this.signMatch(currentUser.address, topMatch.address, topMatch.score, nonce);
             return {
                 matchAddress: topMatch.address,
                 score: topMatch.score,
@@ -94,7 +95,7 @@ async function main() {
         cid: "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco"
     };
 
-    const matchResult = await agent.handleMatchRequest(userA, [userB]);
+    const matchResult = await agent.handleMatchRequest(userA, [userB], 0);
     console.log("Match Result:", matchResult);
 }
 
