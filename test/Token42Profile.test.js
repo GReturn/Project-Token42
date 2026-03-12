@@ -26,14 +26,28 @@ describe("Token42Profile", function () {
         });
     });
 
-    describe("Minting & Identity (Simulated)", function () {
+    describe("Minting & Identity", function () {
+        beforeEach(async function () {
+            // Mock the Identity Precompile at 0x901
+            // Simple bytecode that always returns true (32 bytes of 1)
+            const mockBytecode = "0x600160005260206000f3"; 
+            await hre.network.provider.send("hardhat_setCode", [
+                "0x0000000000000000000000000000000000000901",
+                mockBytecode,
+            ]);
+        });
+
         it("should allow minting and return correct tokenURI", async function () {
-            // Note: In local hardhat, the precompile call will fail unless mocked.
-            // For this test, we assume the precompile is handled or the contract is modified for test.
-            // Since we didn't mock the precompile in the contract itself yet, 
-            // we will expect a revert on local hardhat due to lack of precompile at 0x901.
-            await expect(profile.connect(user1).mintProfile(mockCID))
-                .to.be.revertedWith("Identity Precompile failed");
+            await profile.connect(user1).mintProfile(mockCID);
+            expect(await profile.hasProfile(user1.address)).to.equal(true);
+            expect(await profile.tokenURI(0)).to.equal("ipfs://" + mockCID);
+        });
+
+        it("should allow updating profile", async function () {
+            await profile.connect(user1).mintProfile(mockCID);
+            const newCID = "QmNewCID...";
+            await profile.connect(user1).updateProfile(newCID);
+            expect(await profile.getProfileCID(user1.address)).to.equal(newCID);
         });
     });
 
@@ -54,15 +68,40 @@ describe("Token42Profile", function () {
         });
     });
 
-    describe("Ownership", function () {
-        it("should allow ownership transfer", async function () {
-            await profile.transferOwnership(user1.address);
-            expect(await profile.owner()).to.equal(user1.address);
+    describe("Ownership & Administration", function () {
+        it("should allow owner to add an admin", async function () {
+            await profile.addAdmin(user1.address);
+            expect(await profile.isAdmin(user1.address)).to.equal(true);
         });
 
-        it("should prevent non-owners from revoking", async function () {
+        it("should allow added admin to call revoke", async function () {
+            await profile.addAdmin(user1.address);
+            // Minting would fail locally due to precompile, but we can test the access control
+            // by checking that it doesn't revert with "Not admin"
             await expect(profile.connect(user1).revoke(user2.address))
+                .to.not.be.revertedWith("Not admin");
+        });
+
+        it("should allow owner to remove an admin", async function () {
+            await profile.addAdmin(user1.address);
+            await profile.removeAdmin(user1.address);
+            expect(await profile.isAdmin(user1.address)).to.equal(false);
+        });
+
+        it("should prevent non-owners from adding admins", async function () {
+            await expect(profile.connect(user1).addAdmin(user2.address))
                 .to.be.revertedWith("Not owner");
+        });
+
+        it("should prevent non-admins from revoking", async function () {
+            await expect(profile.connect(user2).revoke(user1.address))
+                .to.be.revertedWith("Not admin");
+        });
+
+        it("should allow ownership transfer and update admin status", async function () {
+            await profile.transferOwnership(user1.address);
+            expect(await profile.owner()).to.equal(user1.address);
+            expect(await profile.isAdmin(user1.address)).to.equal(true);
         });
     });
 });

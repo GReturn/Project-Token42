@@ -29,6 +29,7 @@ contract Token42Profile {
     uint256 private _nextTokenId;
     mapping(address => Profile) private _profiles;
     mapping(uint256 => address) private _owners;
+    mapping(address => bool) public isAdmin;
 
     address public owner;
 
@@ -41,10 +42,17 @@ contract Token42Profile {
     event ProfileUpdated(address indexed user, string newCid);
     event ProfileRevoked(address indexed user, uint256 indexed tokenId);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event AdminAdded(address indexed account);
+    event AdminRemoved(address indexed account);
 
     // --- Modifiers ---
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    modifier onlyAdmin() {
+        require(isAdmin[msg.sender] || msg.sender == owner, "Not admin");
         _;
     }
 
@@ -59,6 +67,7 @@ contract Token42Profile {
 
     constructor() {
         owner = msg.sender;
+        isAdmin[msg.sender] = true;
     }
 
     // --- ERC-721 Standard Read Functions ---
@@ -130,7 +139,7 @@ contract Token42Profile {
     /**
      * @dev Admin-driven removal (Identity Revocation).
      */
-    function revoke(address user) public onlyOwner {
+    function revoke(address user) public onlyAdmin {
         require(_profiles[user].active, "User has no active profile");
         _removeProfile(user);
     }
@@ -153,11 +162,25 @@ contract Token42Profile {
 
     // --- Governance ---
 
+    function addAdmin(address account) public onlyOwner {
+        require(account != address(0), "Zero address");
+        isAdmin[account] = true;
+        emit AdminAdded(account);
+    }
+
+    function removeAdmin(address account) public onlyOwner {
+        require(account != owner, "Cannot remove owner");
+        isAdmin[account] = false;
+        emit AdminRemoved(account);
+    }
+
     function transferOwnership(address newOwner) public onlyOwner {
         require(newOwner != address(0), "New owner is zero address");
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
+        isAdmin[newOwner] = true; // Auto-admin new owner
     }
+
 
     // --- ERC-721 Soulbound Blockers ---
 
