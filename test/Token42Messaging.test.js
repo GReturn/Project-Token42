@@ -75,15 +75,21 @@ describe("Token42Messaging", function () {
         ).to.be.revertedWithCustomError(messaging, "ScoreTooLow");
     });
 
-    it("should allow recipient to claim stake", async function () {
+    it("should allow recipient to claim stake with protocol fee", async function () {
         const nonce = await messaging.nonces(sender.address);
         const signature = await createSignature(sender.address, recipient.address, 85, nonce);
         await messaging.connect(sender).stakeForMessage(recipient.address, 85, signature);
 
-        const initialBalance = await mockRUSD.balanceOf(recipient.address);
+        const initialRecipientBalance = await mockRUSD.balanceOf(recipient.address);
+        const initialOwnerBalance = await mockRUSD.balanceOf(owner.address);
+        
         await messaging.connect(recipient).claimStake(sender.address);
 
-        expect(await mockRUSD.balanceOf(recipient.address)).to.equal(initialBalance + stakeAmount);
+        const fee = (stakeAmount * 1000n) / 10000n;
+        const recipientAmount = stakeAmount - fee;
+
+        expect(await mockRUSD.balanceOf(recipient.address)).to.equal(initialRecipientBalance + recipientAmount);
+        expect(await mockRUSD.balanceOf(owner.address)).to.equal(initialOwnerBalance + fee);
     });
 
     it("should allow any Admin to slash stake", async function () {
@@ -125,5 +131,14 @@ describe("Token42Messaging", function () {
 
         await messaging.connect(aiAgent).setMinMatchScore(90);
         expect(await messaging.minMatchScore()).to.equal(90);
+
+        await messaging.connect(aiAgent).setProtocolFee(500); // 5%
+        expect(await messaging.protocolFeeBps()).to.equal(500);
+    });
+
+    it("should reject protocol fee above 20%", async function () {
+        await expect(
+            messaging.connect(aiAgent).setProtocolFee(2500)
+        ).to.be.revertedWithCustomError(messaging, "InvalidAddress");
     });
 });
