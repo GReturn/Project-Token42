@@ -54,6 +54,7 @@ function App() {
   return (
     <div className="App">
       <header className="header">
+        <img src="/token42.svg" alt="Token42 Logo" className="logo" style={{ width: '80px', marginBottom: '1rem' }} />
         <h1>Token42</h1>
         <p>Verifiable Identity. AI Matching. Staked Connection.</p>
       </header>

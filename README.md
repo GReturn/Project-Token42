@@ -1,5 +1,6 @@
 <p align="center">
-  <h1 align="center">💎 Token42</h1>
+  <img src="frontend/public/token42.png" alt="Token42 Logo" width="200" />
+  <h1 align="center">Token42</h1>
   <p align="center"><strong>Decentralized AI Dating Platform on Polkadot</strong></p>
   <p align="center">
     <em>Verifiable Identity · Private AI Matching · Staked Connections</em>
