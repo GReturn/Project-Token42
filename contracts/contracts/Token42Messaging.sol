@@ -35,6 +35,7 @@ contract Token42Messaging {
 
     uint256 public stakeAmount = 1 * 10 ** 18; // 1 rUSD
     uint256 public minMatchScore = 80;
+    uint256 public protocolFeeBps = 1000; // 10% Protocol Fee
 
     struct MessageRequest {
         address sender;
@@ -70,7 +71,8 @@ contract Token42Messaging {
     event MessageClaimed(
         address indexed recipient,
         address indexed sender,
-        uint256 amount
+        uint256 amount,
+        uint256 fee
     );
     event StakeSlashed(
         address indexed sender,
@@ -82,6 +84,7 @@ contract Token42Messaging {
     event AdminRemoved(address indexed account);
     event StakeAmountUpdated(uint256 newAmount);
     event MinMatchScoreUpdated(uint256 newScore);
+    event ProtocolFeeUpdated(uint256 newBps);
 
     // --- Modifiers ---
     modifier onlyOwner() {
@@ -139,6 +142,16 @@ contract Token42Messaging {
     }
 
     /**
+     * @dev Update the protocol fee in basis points (100 BPS = 1%).
+     *      Max fee capped at 20% (2000 BPS) for safety.
+     */
+    function setProtocolFee(uint256 _bps) external onlyAdmin {
+        if (_bps > 2000) revert InvalidAddress(); // Reuse error for simplicity or add a specific one
+        protocolFeeBps = _bps;
+        emit ProtocolFeeUpdated(_bps);
+    }
+
+    /**
      * @dev Stake rUSD to message a recipient.
      *      Requires a valid ECDSA signature from an Admin (typically the AI Agent).
      *      Includes a nonce for replay protection.
@@ -193,11 +206,19 @@ contract Token42Messaging {
         if (req.recipient != msg.sender) revert NotRecipient();
 
         req.active = false;
-        if (!rUSD.transfer(msg.sender, req.stake)) {
+        
+        uint256 fee = (req.stake * protocolFeeBps) / 10000;
+        uint256 recipientAmount = req.stake - fee;
+
+        if (fee > 0) {
+            if (!rUSD.transfer(owner, fee)) revert ClaimTransferFailed();
+        }
+
+        if (!rUSD.transfer(msg.sender, recipientAmount)) {
             revert ClaimTransferFailed();
         }
 
-        emit MessageClaimed(msg.sender, sender, req.stake);
+        emit MessageClaimed(msg.sender, sender, recipientAmount, fee);
     }
 
     /**
