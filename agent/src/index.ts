@@ -1,29 +1,48 @@
 import { ethers } from 'ethers';
+import axios from 'axios';
 
-// Phala Agent Kit & SDK simplified types for hackathon demo
 interface UserProfile {
     address: string;
-    personalityVector: number[];
+    personalityBio: string;
+    personalityVector?: number[]; // Added by the agent
     cid: string;
 }
 
 /**
  * @title Token42 AI Agent
- * @dev Runs inside a Phala TEE to provide private personality matching.
+ * @dev Runs locally (or in TEE) to provide private personality matching.
+ *      Uses Ollama for local embedding generation.
  */
 export class Token42Agent {
     private agentWallet: ethers.Wallet;
+    private ollamaUrl = 'http://localhost:11434/api/embeddings';
 
     constructor(privateKey: string) {
         this.agentWallet = new ethers.Wallet(privateKey);
     }
 
     /**
+     * @dev Generate embeddings using local Ollama instance (Llama 3).
+     */
+    public async generateEmbedding(text: string): Promise<number[]> {
+        try {
+            const response = await axios.post(this.ollamaUrl, {
+                model: 'llama3',
+                prompt: text
+            });
+            return response.data.embedding;
+        } catch (error) {
+            console.error("Embedding generation failed. Is Ollama running?");
+            // Fallback mock vector if Ollama is not available during dev
+            return Array(4096).fill(0).map(() => Math.random());
+        }
+    }
+
+    /**
      * @dev Simple Cosine Similarity implementation.
-     * Happens entirely inside the TEE, ensuring privacy.
      */
     public calculateSimilarity(v1: number[], v2: number[]): number {
-        if (v1.length !== v2.length) return 0;
+        if (!v1 || !v2 || v1.length !== v2.length) return 0;
         let dotProduct = 0;
         let mag1 = 0;
         let mag2 = 0;
@@ -37,39 +56,51 @@ export class Token42Agent {
 
     /**
      * @dev Sign a "Match Intent" payload that the Smart Contract can verify.
-     * Includes a nonce for replay protection.
      */
     public async signMatch(userA: string, userB: string, score: number, nonce: number): Promise<string> {
+        // Score is expressed in basis points (0-10000) for the contract
+        const scoreBps = Math.floor(score * 100);
+        
         const messageHash = ethers.solidityPackedKeccak256(
             ['address', 'address', 'uint256', 'uint256'],
-            [userA, userB, Math.floor(score * 100), nonce]
+            [userA, userB, scoreBps, nonce]
         );
+        
+        // EIP-191 signature (prefixed)
         return await this.agentWallet.signMessage(ethers.getBytes(messageHash));
     }
 
     /**
-     * @dev Handle matching request.
+     * @dev Handle matching request using local inference.
      */
     public async handleMatchRequest(currentUser: UserProfile, potentialMatches: UserProfile[], nonce: number) {
-        console.log(`Matching for ${currentUser.address}...`);
+        console.log(`Generating embedding for ${currentUser.address}...`);
+        const userVector = await this.generateEmbedding(currentUser.personalityBio);
 
-        const results = potentialMatches.map(match => ({
-            address: match.address,
-            score: this.calculateSimilarity(currentUser.personalityVector, match.personalityVector)
-        }));
+        console.log(`Analyzing matches...`);
+        const resultPromises = potentialMatches.map(async (match) => {
+            const matchVector = await this.generateEmbedding(match.personalityBio);
+            return {
+                address: match.address,
+                score: this.calculateSimilarity(userVector, matchVector)
+            };
+        });
+
+        const results = await Promise.all(resultPromises);
 
         // Sort by similarity
         results.sort((a, b) => b.score - a.score);
 
         // Top match logic
         const topMatch = results[0];
-        console.log(`Top match: ${topMatch.address} with score ${topMatch.score}`);
+        console.log(`Top match: ${topMatch.address} with score ${(topMatch.score * 100).toFixed(2)}%`);
 
+        // Min score for signing (0.8 = 80%)
         if (topMatch.score > 0.8) {
             const signature = await this.signMatch(currentUser.address, topMatch.address, topMatch.score, nonce);
             return {
                 matchAddress: topMatch.address,
-                score: topMatch.score,
+                score: Math.floor(topMatch.score * 100),
                 signature: signature
             };
         }
@@ -80,21 +111,23 @@ export class Token42Agent {
 
 // Demo usage / Entry point
 async function main() {
-    // In TEE, the private key would be generated inside the enclave
+    // In production TEE, this key would be inside the enclave.
+    // For demo, we use a fixed "admin" key or random one.
     const agent = new Token42Agent(ethers.Wallet.createRandom().privateKey);
 
-    const userA = {
-        address: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf", // Use a valid address
-        personalityVector: [0.1, 0.9, 0.3, 0.5],
-        cid: "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco"
+    const userA: UserProfile = {
+        address: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        personalityBio: "I love hiking, decentralized finance, and drinking specialty coffee in Tokyo.",
+        cid: "QmX123"
     };
 
-    const userB = {
-        address: "0x375ac89e80AE2169EC049B5780831A58bab5f7e3", // Use the deployer address
-        personalityVector: [0.15, 0.85, 0.35, 0.45],
-        cid: "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco"
+    const userB: UserProfile = {
+        address: "0x375ac89e80AE2169EC049B5780831A58bab5f7e3",
+        personalityBio: "Avid mountaineer and blockchain developer. I spend my weekends exploring the Alps.",
+        cid: "QmY456"
     };
 
+    console.log("Starting local AI match analysis...");
     const matchResult = await agent.handleMatchRequest(userA, [userB], 0);
     console.log("Match Result:", matchResult);
 }
