@@ -22,9 +22,8 @@ contract Token42Profile {
 
     // --- Storage Optimization: Profile Struct ---
     struct Profile {
-        uint256 id;
+        uint256 id;   // id == 0 means no profile (saves a storage slot)
         string cid;
-        bool active;
     }
 
     uint256 private _nextTokenId;
@@ -37,6 +36,23 @@ contract Token42Profile {
     IIdentity public constant IDENTITY_PRECOMPILE =
         IIdentity(address(0x0000000000000000000000000000000000000901));
 
+    // --- Custom Errors ---
+    error NotOwner();
+    error NotAdmin();
+    error NotVerified();
+    error PrecompileFailed();
+    error ProfileAlreadyExists();
+    error NoProfileFound();
+    error EmptyCID();
+    error InvalidAddress();
+    error AlreadyAdmin();
+    error NotAnAdmin();
+    error CannotRemoveOwner();
+    error TokenDoesNotExist();
+    error NonTransferable();
+    error ApprovalsDisabled();
+    error CannotRevokeSelf();
+
     // --- Events ---
     event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
     event ProfileMinted(address indexed user, uint256 indexed tokenId, string cid);
@@ -48,20 +64,20 @@ contract Token42Profile {
 
     // --- Modifiers ---
     modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
+        if (msg.sender != owner) revert NotOwner();
         _;
     }
 
     modifier onlyAdmin() {
-        require(isAdmin[msg.sender] || msg.sender == owner, "Not admin");
+        if (!isAdmin[msg.sender] && msg.sender != owner) revert NotAdmin();
         _;
     }
 
     modifier onlyVerified() {
         try IDENTITY_PRECOMPILE.is_verified(msg.sender) returns (bool verified) {
-            require(verified, "User not verified as human");
+            if (!verified) revert NotVerified();
         } catch {
-            revert("Identity Precompile failed");
+            revert PrecompileFailed();
         }
         _;
     }
@@ -75,17 +91,17 @@ contract Token42Profile {
     // --- ERC-721 Standard Read Functions ---
 
     function balanceOf(address account) public view returns (uint256) {
-        return _profiles[account].active ? 1 : 0;
+        return _profiles[account].id != 0 ? 1 : 0;
     }
 
     function ownerOf(uint256 tokenId) public view returns (address) {
         address tokenOwner = _owners[tokenId];
-        require(tokenOwner != address(0), "Token does not exist");
+        if (tokenOwner == address(0)) revert TokenDoesNotExist();
         return tokenOwner;
     }
 
     function hasProfile(address user) public view returns (bool) {
-        return _profiles[user].active;
+        return _profiles[user].id != 0;
     }
 
     /**
@@ -93,7 +109,7 @@ contract Token42Profile {
      */
     function tokenURI(uint256 tokenId) public view returns (string memory) {
         address tokenOwner = _owners[tokenId];
-        require(tokenOwner != address(0), "Token does not exist");
+        if (tokenOwner == address(0)) revert TokenDoesNotExist();
         return string(abi.encodePacked("ipfs://", _profiles[tokenOwner].cid));
     }
 
@@ -103,15 +119,14 @@ contract Token42Profile {
      * @dev Mint a new soulbound profile.
      */
     function mintProfile(string memory cid) public onlyVerified {
-        require(!_profiles[msg.sender].active, "Profile already exists");
-        require(bytes(cid).length > 0, "Empty CID");
+        if (_profiles[msg.sender].id != 0) revert ProfileAlreadyExists();
+        if (bytes(cid).length == 0) revert EmptyCID();
 
         uint256 tokenId = _nextTokenId++;
         
         _profiles[msg.sender] = Profile({
             id: tokenId,
-            cid: cid,
-            active: true
+            cid: cid
         });
         _owners[tokenId] = msg.sender;
 
@@ -123,10 +138,11 @@ contract Token42Profile {
      * @dev Update profile metadata.
      */
     function updateProfile(string memory newCid) public onlyVerified {
-        require(_profiles[msg.sender].active, "No profile found");
-        require(bytes(newCid).length > 0, "Empty CID");
+        Profile storage profile = _profiles[msg.sender];
+        if (profile.id == 0) revert NoProfileFound();
+        if (bytes(newCid).length == 0) revert EmptyCID();
 
-        _profiles[msg.sender].cid = newCid;
+        profile.cid = newCid;
         emit ProfileUpdated(msg.sender, newCid);
     }
 
@@ -134,7 +150,7 @@ contract Token42Profile {
      * @dev User-driven removal (Right to be Forgotten).
      */
     function burn() public {
-        require(_profiles[msg.sender].active, "No profile found");
+        if (_profiles[msg.sender].id == 0) revert NoProfileFound();
         _removeProfile(msg.sender);
     }
 
@@ -142,7 +158,8 @@ contract Token42Profile {
      * @dev Admin-driven removal (Identity Revocation).
      */
     function revoke(address user) public onlyAdmin {
-        require(_profiles[user].active, "User has no active profile");
+        if (user == owner) revert CannotRevokeSelf();
+        if (_profiles[user].id == 0) revert NoProfileFound();
         _removeProfile(user);
     }
 
@@ -158,26 +175,30 @@ contract Token42Profile {
      * @dev Get the profile CID for a user (Legacy compat).
      */
     function getProfileCID(address user) public view returns (string memory) {
-        require(_profiles[user].active, "User has no profile");
-        return _profiles[user].cid;
+        Profile storage profile = _profiles[user];
+        if (profile.id == 0) revert NoProfileFound();
+        return profile.cid;
     }
 
     // --- Governance ---
 
     function addAdmin(address account) public onlyOwner {
-        require(account != address(0), "Zero address");
+        if (account == address(0)) revert InvalidAddress();
+        if (isAdmin[account]) revert AlreadyAdmin();
         isAdmin[account] = true;
         emit AdminAdded(account);
     }
 
     function removeAdmin(address account) public onlyOwner {
-        require(account != owner, "Cannot remove owner");
+        if (account == owner) revert CannotRemoveOwner();
+        if (!isAdmin[account]) revert NotAnAdmin();
         isAdmin[account] = false;
         emit AdminRemoved(account);
     }
 
     function transferOwnership(address newOwner) public onlyOwner {
-        require(newOwner != address(0), "New owner is zero address");
+        if (newOwner == address(0)) revert InvalidAddress();
+        isAdmin[owner] = false; // Revoke admin from old owner
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
         isAdmin[newOwner] = true; // Auto-admin new owner
@@ -187,23 +208,23 @@ contract Token42Profile {
     // --- ERC-721 Soulbound Blockers ---
 
     function transferFrom(address, address, uint256) public pure {
-        revert("SBT: Non-transferable");
+        revert NonTransferable();
     }
 
     function safeTransferFrom(address, address, uint256) public pure {
-        revert("SBT: Non-transferable");
+        revert NonTransferable();
     }
 
     function safeTransferFrom(address, address, uint256, bytes memory) public pure {
-        revert("SBT: Non-transferable");
+        revert NonTransferable();
     }
 
     function approve(address, uint256) public pure {
-        revert("SBT: Approvals disabled");
+        revert ApprovalsDisabled();
     }
 
     function setApprovalForAll(address, bool) public pure {
-        revert("SBT: Approvals disabled");
+        revert ApprovalsDisabled();
     }
 
     function getApproved(uint256) public pure returns (address) {
@@ -219,7 +240,7 @@ contract Token42Profile {
     function supportsInterface(bytes4 interfaceId) public pure returns (bool) {
         return
             interfaceId == 0x01ffc9a7 || // ERC-165
-            interfaceId == 0x80ac58cd || // ERC-721
             interfaceId == 0x5b5e139f;   // ERC-721 Metadata
+            // interfaceId == 0x80ac58cd; // Removed full ERC-721 support as it is an SBT
     }
 }
