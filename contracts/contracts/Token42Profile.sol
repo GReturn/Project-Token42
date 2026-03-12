@@ -12,25 +12,23 @@ interface IIdentity {
 /**
  * @title Token42Profile
  * @dev Soulbound profile token for Token42.
- *      Minimal ERC-721 implementation — no OpenZeppelin.
- *      Keeps bytecode under PolkaVM's 100KB limit.
- *
- * Key features:
- *   - One profile per verified human (Identity Precompile check)
- *   - Non-transferable (soulbound)
- *   - IPFS CID storage for profile metadata
+ *      Optimized for PolkaVM and gas efficiency.
  */
 contract Token42Profile {
-    // --- ERC-721 Storage ---
-    string public name = "Token42 Profile";
-    string public symbol = "T42P";
+    // --- ERC-721 Metadata ---
+    string public constant name = "Token42 Profile";
+    string public constant symbol = "T42P";
+
+    // --- Storage Optimization: Profile Struct ---
+    struct Profile {
+        uint256 id;
+        string cid;
+        bool active;
+    }
 
     uint256 private _nextTokenId;
+    mapping(address => Profile) private _profiles;
     mapping(uint256 => address) private _owners;
-    mapping(address => uint256) private _balances;
-    mapping(uint256 => string) private _tokenCIDs;
-    mapping(address => uint256) private _userTokenId;
-    mapping(address => bool) private _hasProfile;
 
     address public owner;
 
@@ -38,16 +36,11 @@ contract Token42Profile {
         IIdentity(address(0x0000000000000000000000000000000000000901));
 
     // --- Events ---
-    event Transfer(
-        address indexed from,
-        address indexed to,
-        uint256 indexed tokenId
-    );
-    event ProfileMinted(
-        address indexed user,
-        uint256 indexed tokenId,
-        string cid
-    );
+    event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
+    event ProfileMinted(address indexed user, uint256 indexed tokenId, string cid);
+    event ProfileUpdated(address indexed user, string newCid);
+    event ProfileRevoked(address indexed user, uint256 indexed tokenId);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     // --- Modifiers ---
     modifier onlyOwner() {
@@ -55,14 +48,23 @@ contract Token42Profile {
         _;
     }
 
+    modifier onlyVerified() {
+        try IDENTITY_PRECOMPILE.is_verified(msg.sender) returns (bool verified) {
+            require(verified, "User not verified as human");
+        } catch {
+            revert("Identity Precompile failed");
+        }
+        _;
+    }
+
     constructor() {
         owner = msg.sender;
     }
 
-    // --- ERC-721 Read Functions ---
+    // --- ERC-721 Standard Read Functions ---
 
     function balanceOf(address account) public view returns (uint256) {
-        return _balances[account];
+        return _profiles[account].active ? 1 : 0;
     }
 
     function ownerOf(uint256 tokenId) public view returns (address) {
@@ -72,50 +74,127 @@ contract Token42Profile {
     }
 
     function hasProfile(address user) public view returns (bool) {
-        return _hasProfile[user];
+        return _profiles[user].active;
+    }
+
+    /**
+     * @dev Standard metadata URI.
+     */
+    function tokenURI(uint256 tokenId) public view returns (string memory) {
+        address tokenOwner = _owners[tokenId];
+        require(tokenOwner != address(0), "Token does not exist");
+        return string(abi.encodePacked("ipfs://", _profiles[tokenOwner].cid));
     }
 
     // --- Core Logic ---
 
     /**
      * @dev Mint a new soulbound profile.
-     *      User must be verified by the Identity Precompile.
-     * @param cid IPFS CID for profile metadata.
      */
-    function mintProfile(string memory cid) public {
-        require(!_hasProfile[msg.sender], "Profile already exists");
+    function mintProfile(string memory cid) public onlyVerified {
+        require(!_profiles[msg.sender].active, "Profile already exists");
+        require(bytes(cid).length > 0, "Empty CID");
 
-        // Polkadot Identity Precompile check
-        try IDENTITY_PRECOMPILE.is_verified(msg.sender) returns (
-            bool verified
-        ) {
-            require(verified, "User not verified as human");
-        } catch {
-            revert("Identity Precompile not found or failed");
-        }
         uint256 tokenId = _nextTokenId++;
+        
+        _profiles[msg.sender] = Profile({
+            id: tokenId,
+            cid: cid,
+            active: true
+        });
         _owners[tokenId] = msg.sender;
-        _balances[msg.sender] = 1;
-        _tokenCIDs[tokenId] = cid;
-        _userTokenId[msg.sender] = tokenId;
-        _hasProfile[msg.sender] = true;
 
         emit Transfer(address(0), msg.sender, tokenId);
         emit ProfileMinted(msg.sender, tokenId, cid);
     }
 
     /**
-     * @dev Get the profile CID for a user.
+     * @dev Update profile metadata.
      */
-    function getProfileCID(address user) public view returns (string memory) {
-        require(_hasProfile[user], "User has no profile");
-        return _tokenCIDs[_userTokenId[user]];
+    function updateProfile(string memory newCid) public onlyVerified {
+        require(_profiles[msg.sender].active, "No profile found");
+        require(bytes(newCid).length > 0, "Empty CID");
+
+        _profiles[msg.sender].cid = newCid;
+        emit ProfileUpdated(msg.sender, newCid);
     }
 
     /**
-     * @dev Soulbound: transfers are disabled.
+     * @dev User-driven removal (Right to be Forgotten).
      */
+    function burn() public {
+        require(_profiles[msg.sender].active, "No profile found");
+        _removeProfile(msg.sender);
+    }
+
+    /**
+     * @dev Admin-driven removal (Identity Revocation).
+     */
+    function revoke(address user) public onlyOwner {
+        require(_profiles[user].active, "User has no active profile");
+        _removeProfile(user);
+    }
+
+    function _removeProfile(address user) internal {
+        uint256 tokenId = _profiles[user].id;
+        delete _owners[tokenId];
+        delete _profiles[user];
+        emit Transfer(user, address(0), tokenId);
+        emit ProfileRevoked(user, tokenId);
+    }
+
+    /**
+     * @dev Get the profile CID for a user (Legacy compat).
+     */
+    function getProfileCID(address user) public view returns (string memory) {
+        require(_profiles[user].active, "User has no profile");
+        return _profiles[user].cid;
+    }
+
+    // --- Governance ---
+
+    function transferOwnership(address newOwner) public onlyOwner {
+        require(newOwner != address(0), "New owner is zero address");
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
+    }
+
+    // --- ERC-721 Soulbound Blockers ---
+
     function transferFrom(address, address, uint256) public pure {
-        revert("SBT: Profiles are non-transferable");
+        revert("SBT: Non-transferable");
+    }
+
+    function safeTransferFrom(address, address, uint256) public pure {
+        revert("SBT: Non-transferable");
+    }
+
+    function safeTransferFrom(address, address, uint256, bytes memory) public pure {
+        revert("SBT: Non-transferable");
+    }
+
+    function approve(address, uint256) public pure {
+        revert("SBT: Approvals disabled");
+    }
+
+    function setApprovalForAll(address, bool) public pure {
+        revert("SBT: Approvals disabled");
+    }
+
+    function getApproved(uint256) public pure returns (address) {
+        return address(0);
+    }
+
+    function isApprovedForAll(address, address) public pure returns (bool) {
+        return false;
+    }
+
+    // --- ERC-165 Support ---
+
+    function supportsInterface(bytes4 interfaceId) public pure returns (bool) {
+        return
+            interfaceId == 0x01ffc9a7 || // ERC-165
+            interfaceId == 0x80ac58cd || // ERC-721
+            interfaceId == 0x5b5e139f;   // ERC-721 Metadata
     }
 }
