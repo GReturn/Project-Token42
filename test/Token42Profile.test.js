@@ -40,7 +40,7 @@ describe("Token42Profile", function () {
         it("should allow minting and return correct tokenURI", async function () {
             await profile.connect(user1).mintProfile(mockCID);
             expect(await profile.hasProfile(user1.address)).to.equal(true);
-            expect(await profile.tokenURI(0)).to.equal("ipfs://" + mockCID);
+            expect(await profile.tokenURI(1)).to.equal("ipfs://" + mockCID);
         });
 
         it("should allow updating profile", async function () {

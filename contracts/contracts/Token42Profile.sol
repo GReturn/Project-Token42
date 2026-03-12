@@ -2,8 +2,9 @@
 pragma solidity ^0.8.28;
 
 /**
- * @title IIdentity
  * @dev Interface for the Polkadot Identity Precompile (0x...901)
+ *      The `is_verified` call checks if an account has a valid identity
+ *      on the People Chain with a judgment of 'Reasonable' or 'KnownGood'.
  */
 interface IIdentity {
     function is_verified(address account) external view returns (bool);
@@ -68,6 +69,7 @@ contract Token42Profile {
     constructor() {
         owner = msg.sender;
         isAdmin[msg.sender] = true;
+        _nextTokenId = 1; // Start at 1 to avoid ambiguity with legacy indexers
     }
 
     // --- ERC-721 Standard Read Functions ---
