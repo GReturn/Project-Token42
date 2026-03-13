@@ -13,6 +13,7 @@ const RUSD_CONTRACT_ADDRESS = "0x...YOUR_RUSD_ADDRESS_HERE...";
 
 const PROFILE_ABI = [
   "function mintProfile(string cid) public",
+  "function updateProfile(string newCid) public",
   "function hasProfile(address user) public view returns (bool)",
   "function getProfileCID(address user) public view returns (string)"
 ];
@@ -154,14 +155,25 @@ function App() {
       const signer = await provider.getSigner();
       const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, signer);
 
-      const tx = await profileContract.mintProfile(cid);
+      let tx;
+      if (userCID) {
+        // Profile already exists, update it
+        console.log("Updating existing profile...");
+        tx = await profileContract.updateProfile(cid);
+      } else {
+        // No profile found, mint a new one
+        console.log("Minting new soulbound profile...");
+        tx = await profileContract.mintProfile(cid);
+      }
+
       setTxHash(tx.hash);
       await tx.wait();
       
       setUserCID(cid);
+      alert(userCID ? "Profile Updated!" : "Soulbound Profile Minted!");
       setStep('matching');
     } catch (error: any) {
-      console.error("Profile creation failed:", error);
+      console.error("Profile operation failed:", error);
       alert(`Error: ${error.message || "Unknown error"}`);
     } finally {
       setLoading(false);
@@ -365,9 +377,9 @@ function App() {
                 disabled={loading || !profile.bio}
               >
                 {loading ? (
-                  <span className="loading-pulse">Minting Soulbound Token...</span>
+                  <span className="loading-pulse">{userCID ? "Updating Profile..." : "Minting Soulbound Token..."}</span>
                 ) : (
-                  "Mint Soulbound Profile →"
+                  userCID ? "Update Profile →" : "Mint Soulbound Profile →"
                 )}
               </button>
             </GlassCard>
