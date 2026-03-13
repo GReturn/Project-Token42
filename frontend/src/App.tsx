@@ -59,6 +59,7 @@ function App() {
   });
   const [isConnecting, setIsConnecting] = useState(false);
   const [initialProfile, setInitialProfile] = useState<UserProfile | null>(null);
+  const [showRecipientBio, setShowRecipientBio] = useState(false);
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const MAX_CHAT_CHARS = 500;
@@ -635,18 +636,45 @@ function App() {
             </GlassCard>
 
             {/* Chat Main */}
-            <GlassCard className="chat-container">
+            <div className="chat-main-container">
               {activeChat ? (
                 <>
-                  <div className="chat-header">
+                  <div className="chat-external-header">
                     <div className="chat-header-info">
-                      <h2>{activeChat.slice(0, 8)}...{activeChat.slice(-6)}</h2>
-                      <p>End-to-end verified. Harassment = stake slashed.</p>
+                      <div className="chat-recipient-address">
+                        {activeChat.slice(0, 8)}...{activeChat.slice(-6)}
+                      </div>
+                      <p className="chat-verification-msg">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', color: 'var(--accent)' }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        End-to-end encrypted • Protected Session
+                      </p>
                     </div>
-                    <StatusBadge status="verified" label="Staked 1 rUSD" />
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <button 
+                        className="text-btn bio-toggle-btn" 
+                        onClick={() => setShowRecipientBio(!showRecipientBio)}
+                        style={{ color: showRecipientBio ? 'var(--accent)' : 'var(--text-muted)' }}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="bio-icon"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        <span className="bio-btn-text">{showRecipientBio ? 'Hide Bio' : 'View Bio'}</span>
+                      </button>
+                      <StatusBadge status="verified" label="Staked" />
+                    </div>
                   </div>
 
-                  <div className="chat-messages">
+                  {showRecipientBio && (
+                    <div className="recipient-bio-overlay animate-in">
+                      <p>{chatMessages[activeChat]?.[0]?.text ? "Bio extracted from AI Match" : "Bio shared via protocol"}</p>
+                      <div className="bio-content">
+                        {/* In a real app, we'd fetch the recipient's bio from IPFS using their CID. 
+                            For now, we'll show a placeholder or mock info. */}
+                        Passionate about decentralized systems and AI. Looking for someone to build the future with.
+                      </div>
+                    </div>
+                  )}
+
+                  <GlassCard className="chat-container">
+                    <div className="chat-messages">
                     {(chatMessages[activeChat] || []).map((msg, i) => (
                       <div key={i} className={`chat-bubble ${msg.sent ? 'sent' : 'received'}`}>
                         {msg.text}
@@ -681,14 +709,17 @@ function App() {
                     </div>
                     <button className="chat-send-btn" onClick={sendChat}>Send</button>
                   </div>
+                </GlassCard>
                 </>
               ) : (
-                <div className="no-chat-selected">
-                  <div className="empty-state-icon">💬</div>
-                  <p>Select a session to start chatting</p>
-                </div>
+                <GlassCard className="chat-container">
+                  <div className="no-chat-selected">
+                    <div className="empty-state-icon">💬</div>
+                    <p>Select a session to start chatting</p>
+                  </div>
+                </GlassCard>
               )}
-            </GlassCard>
+            </div>
           </div>
         </main>
       )}
