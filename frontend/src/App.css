@@ -57,12 +57,64 @@ body {
   transform: scale(1.02);
 }
 
+.bio-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.75rem 0 0.5rem;
+  padding: 0.9rem 1rem;
+  min-height: 120px;
+  resize: vertical;
+
+  background: #121212;
+  color: var(--text);
+  border: 1px solid #333;
+  border-radius: 12px;
+
+  font: inherit;
+  line-height: 1.4;
+}
+
+.bio-input::placeholder {
+  color: #8a8a8a;
+}
+
+.bio-input:focus {
+  outline: none;
+  border-color: rgba(0, 255, 204, 0.7);
+  box-shadow: 0 0 0 3px rgba(0, 255, 204, 0.15);
+}
+
+.bio-input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .card {
   background-color: var(--card);
   padding: 1.5rem;
   border-radius: 16px;
   border: 1px solid #333;
   margin-bottom: 1rem;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Prevent long strings (keys/addresses/CIDs) from breaking layout */
+.text-wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Single-line truncation with ellipsis (requires container with min-width:0 in flex rows) */
+.text-truncate {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-btn {
@@ -95,6 +147,10 @@ body {
   align-items: center;
   padding: 1rem;
   border-bottom: 1px solid #333;
+}
+
+.match-item > div {
+  min-width: 0;
 }
 
 .match-score {

@@ -105,13 +105,17 @@ function App() {
         {step === 'profile' && (
           <div className="card">
             <h2>Human Verification Success</h2>
-            <p>Identity: {address}</p>
+            <p>
+              Identity:{' '}
+              <span className="mono text-wrap-anywhere">{address}</span>
+            </p>
             <p style={{ color: '#00FFCC' }}>✓ Real Human status confirmed via People Chain</p>
             <textarea 
               placeholder="Tell us about yourself..." 
               className="bio-input" 
               value={bio}
               onChange={(e) => setBio(e.target.value)}
+              rows={5}
               disabled={loading}
             />
             <button 
@@ -139,7 +143,7 @@ function App() {
             {matches.map((m, i) => (
               <div key={i} className="card match-item">
                 <div>
-                  <strong>{m.address}</strong>
+                  <strong className="mono text-truncate">{m.address}</strong>
                   <div className="match-score">{m.score}% Match Score</div>
                 </div>
                 <button onClick={() => stakeAndMessage(m.address)} className="action-btn" style={{ width: 'auto', padding: '0.5rem 1rem' }}>
