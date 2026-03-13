@@ -891,23 +891,28 @@ body {
     padding: 0 1rem; 
     position: fixed;
     top: 0; left: 0; right: 0;
-    z-index: 1100; /* Above everything except maybe modals */
-    background: rgba(5, 5, 8, 0.85); /* Slightly more opaque on mobile for readability */
+    z-index: 9999; /* Maximum z-index to ensure it sits above everything */
+    background: rgba(5, 5, 8, 0.95); /* High opacity for readability */
+    /* Hardware acceleration hint to prevent webview glitches */
+    transform: translateZ(0); 
   }
 
   .nav-links {
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    background: rgba(5, 5, 8, 0.95);
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-    padding: 0.8rem 0.5rem calc(0.8rem + env(safe-area-inset-bottom, 20px));
+    background: rgba(5, 5, 8, 0.98); /* Almost solid background as fallback */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    /* Aggressive padding for safe areas and Android soft nav bars */
+    padding: 0.8rem 0.5rem calc(1.5rem + env(safe-area-inset-bottom, 24px));
     justify-content: space-around;
-    border-top: 1px solid var(--glass-border);
-    z-index: 1000;
+    border-top: 1px solid rgba(255, 255, 255, 0.15); /* Stronger border */
+    z-index: 9998; /* High z-index, just below top nav if they somehow overlap */
     gap: 0;
-    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.8); /* Stronger shadow */
     display: flex;
+    /* Hardware acceleration hint */
+    transform: translateZ(0);
   }
 
   .nav-links button { 
@@ -934,8 +939,9 @@ body {
 
   .main { 
     padding: 1rem; 
-    padding-top: calc(var(--nav-height) + 1rem); /* Space for fixed top nav */
-    padding-bottom: calc(120px + env(safe-area-inset-bottom, 20px)); 
+    padding-top: calc(var(--nav-height) + 1.5rem); /* Extra space for fixed top nav */
+    /* Massive bottom padding to ensure content scrolls past the tall bottom nav */
+    padding-bottom: calc(160px + env(safe-area-inset-bottom, 40px)); 
   }
   .card-header h2 { font-size: 1.3rem; }
 
