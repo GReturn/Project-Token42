@@ -31,11 +31,11 @@ Token42 is a next-generation dating platform that solves the **"Trust Gap"** in 
 
 | Feature | Description |
 |---|---|
-| 🪪 **Verifiable Identity** | Proof-of-Humanity via Polkadot People Chain Identity Precompile. |
-| 🤖 **Private AI Matching** | Personality vectors analyzed inside Phala TEE (even developers can't see your data). |
-| 💰 **Staked Messaging** | Senders lock rUSD to message; recipients claim it by replying (making spam unprofitable). |
-| 🏷️ **Soulbound Profiles** | Non-transferable ERC-721 tokens ensure one real identity per person. |
-| 🛡️ **AI Moderation Oracle** | Automated harassment detection with on-chain slashing penalties. |
+| 🪪 **Verifiable Identity** | Connect with real humans verified via Polkadot's People Chain identity infrastructure. |
+| 🤖 **Private AI Matching** | Private personality analysis inside Phala Network's secure enclaves (TEE). |
+| 💰 **Staked Messaging** | Anti-spam protocol using rUSD staking to ensure high-value connections. |
+| 🏷️ **Soulbound Profiles** | Non-transferable digital identities on the Revive EVM (PolkaVM). |
+| 🛡️ **AI Moderation Oracle** | Automated harassment detection with on-chain slashing penalties |
 
 ---
 
@@ -66,7 +66,7 @@ Token42 is built on a **four-layer decentralized stack**:
 │  └──────────────────────────────────────────────────────┘   │
 │                             ▼                               │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │            STORAGE LAYER (Crust / IPFS)              │   │
+│  │            STORAGE LAYER (IPFS / Pinata)             │   │
 │  │  Encrypted bios · Profile media · Metadata CIDs      │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
@@ -82,7 +82,7 @@ Token42 is built on a **four-layer decentralized stack**:
 | **Runtime** | Polkadot Asset Hub (Revive EVM / PolkaVM) | EVM-compatible execution on Polkadot |
 | **Identity** | Paseo People Chain, Identity Precompile (`0x...901`) | On-chain human verification (DID) |
 | **AI Engine** | Phala Network TEE, Llama-3-8B | Private personality vectorization & matching |
-| **Storage** | Crust Network / IPFS | Decentralized media & metadata hosting |
+| **Storage** | IPFS (Pinata) | Decentralized media & metadata hosting |
 | **Frontend** | React 18, TypeScript, Vite, ethers.js | Mobile-responsive dApp interface |
 | **Wallets** | SubWallet, Talisman, MetaMask | Transaction signing & identity proofs |
 | **Testing** | Hardhat (npx hardhat test) | Contract unit & integration tests |
@@ -189,10 +189,10 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 1.  **Mock Data**: The frontend initially populates some state with mock profile data to show the UI without waiting for IPFS/Contract indexing.
 2.  **Identity Simulation**: The People Chain identity check is simulated in the UI; in production, this calls the `0x...901` precompile via a `staticcall`.
-3.  **Storage**: While the architecture supports Crust/IPFS, the demo uses local JSON-RPC state and CID placeholders.
+3.  **Storage**: Integration with Pinata (IPFS) is functional, but currently uses a public gateway for demonstration.
 4.  **Hardcoded Addresses**: The AI Agent's public key and contract addresses are hardcoded in `App.tsx` and `index.ts`.
 
-**FOR PRODUCTION:** These mocks should be replaced with the Phala SDK, Crust IPFS client, and real-time on-chain identity verification.
+**FOR PRODUCTION:** These mocks should be replaced with the Phala SDK and real-time on-chain identity verification via the People Chain.
 
 > 📖 See [guides/KITDOT_HACKATHON_GUIDE.md](guides/KITDOT_HACKATHON_GUIDE.md) for the full development workflow.
 
