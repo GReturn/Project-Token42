@@ -40,41 +40,39 @@ Since your agent runs locally, you can connect your React frontend to it by wrap
 
 ### 1. API Endpoint (Agent Side)
 
-You should expose a `POST /match` endpoint that takes the user's bio and returns a signed match result.
+The agent in `agent/src/index.ts` already includes an Express server. It exposes a `POST /match` endpoint that handles personality vectorization, similarity calculation, and message signing.
 
 ```typescript
-// agent/src/server.ts (example)
-import express from 'express';
-import { Token42Agent } from './index';
-
-const app = express();
-const agent = new Token42Agent(process.env.AGENT_PRIVATE_KEY);
-
+// agent/src/index.ts (Actual implementation)
 app.post('/match', async (req, res) => {
-    const { currentUser, potentialMatches, nonce } = req.body;
-    const result = await agent.handleMatchRequest(currentUser, potentialMatches, nonce);
-    res.json(result);
+    try {
+        const { currentUser, potentialMatches, nonce } = req.body;
+        const result = await agent.handleMatchRequest(currentUser, potentialMatches, nonce);
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
 });
-
-app.listen(3001, () => console.log('AI Agent listening on port 3001'));
 ```
 
 ### 2. React Integration (Frontend Side)
 
-In your `App.tsx`, call the local agent to get the signed payload before staking.
+In your `App.tsx`, call the local agent to get the signed payload before staking. Ensure you pass the `nonce` from the `Token42Messaging` contract.
 
 ```typescript
 const findMatches = async () => {
+    const nonce = await messagingContract.nonces(address);
     const response = await fetch('http://localhost:3001/match', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-            currentUser: { address, personalityBio: bio },
-            potentialMatches: [...] 
+            currentUser: { address, cid: userCID },
+            potentialMatches,
+            nonce: Number(nonce)
         })
     });
     const data = await response.json();
-    setMatches(data);
+    setMatches([data]);
 };
 
 const stakeAndMessage = async (match) => {
