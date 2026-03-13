@@ -99,20 +99,26 @@ token42/
 │   ├── Dockerfile
 │   └── scripts/                 # Setup & initialization scripts
 ├── contracts/                   # Hardhat-compatible (Solidity ^0.8.28, no OZ)
-│   ├── Token42Profile.sol       # Minimal soulbound profile
-│   ├── Token42Messaging.sol     # Minimal staked messaging
-│   └── MockRUSD.sol             # Test mock ERC-20
+│   ├── contracts/               # Source files
+│   │   ├── Token42Profile.sol   # Minimal soulbound profile
+│   │   ├── Token42Messaging.sol # Minimal staked messaging
+│   │   ├── MockRUSD.sol         # Test mock ERC-20
+│   │   └── MockIdentityPrecompile.sol
 ├── ignition/modules/            # Hardhat Ignition deployment
 │   └── Token42Module.js
 ├── test/                        # Hardhat tests
 │   ├── Token42Profile.test.js
 │   └── Token42Messaging.test.js
 ├── agent/                       # Phala TEE AI Agent
-│   └── src/index.ts
-├── frontend/                    # React dApp
-├── guides/
+│   └── src/index.ts             # Express server & AI logic
+├── frontend/                    # React dApp (Vite)
+├── guides/                      # Comprehensive Documentation
 │   ├── AGENTS.md                # AI agent instructions
-│   └── KITDOT_HACKATHON_GUIDE.md # Development guide
+│   ├── AI_INTEGRATION_GUIDE.md  # Technical bridge between AI and contracts
+│   ├── KITDOT_HACKATHON_GUIDE.md # Development guide
+│   ├── LOCAL_INFERENCE.md       # Running Llama 3 locally via Ollama
+│   ├── LOCAL_TESTING_GUIDE.md   # 2-User interaction walkthrough
+│   └── UI_INTEGRATION_GUIDE.md  # Identity & Messaging UI requirements
 ├── hardhat.config.js            # Hardhat + PolkaVM config
 ├── .gitignore
 └── README.md
@@ -122,7 +128,7 @@ token42/
 
 ## 🛠️ Onboarding & Installation
 
-> **Prerequisites:** Node.js 22+ and npm, or Docker for DevContainers.
+> **Prerequisites:** Node.js 22+ and npm, [Ollama](https://ollama.com/) (for local AI matching), or Docker for DevContainers.
 
 ### Option A: DevContainer (RECOMMENDED)
 
@@ -130,55 +136,55 @@ token42/
 2. Open this project in VS Code
 3. Click **"Reopen in Container"** — all tools install automatically
 
-### Option B: Kitdot CLI
-
-```bash
-npm install -g kitdot
-kitdot init token42
-cd token42
-```
-
-### Option C: Manual Setup
+### Option B: Manual Setup
 
 ```bash
 git clone https://github.com/GReturn/Project-Token42.git
 cd Project-Token42
 ```
 
-#### Hardhat (PolkaVM / Recommended)
-
+#### 1. Smart Contracts
 ```bash
-npm install --save-dev @parity/hardhat-polkadot solc@0.8.28
-npm install --force @nomicfoundation/hardhat-toolbox
+npm install
 npx hardhat compile
 npx hardhat test
 ```
 
-### 🚀 Deployment Status (Paseo Asset Hub)
-
-The contracts are live on the **Paseo Asset Hub (Revive EVM)**:
-- **Token42Profile**: `0xf7cA780f3ad9173108fCd90dF0c156E1715EFf46`
-- **Token42Messaging**: `0x5f963C7599990c941217E1d0D317F601dC1794CE`
-
-### Run the AI Agent (Local Demo)
-
-The agent simulates the TEE environment and matching logic.
+#### 2. AI Agent (Local Matching)
+Ensure Ollama is running and you have pulled the model: `ollama pull llama3`.
 ```bash
-# Recommended: Run with tsx for seamless ESM support
-npx tsx agent/src/index.ts
+cd agent
+npm install
+# Configure .env with your AGENT_PRIVATE_KEY
+npx tsx src/index.ts
 ```
 
-### Launch the Frontend
-
-**Note:** If you are using a DevContainer and encounter port-forwarding issues (`code-tunnel.exe` errors), run the frontend directly on your **host machine (Windows)** terminal.
-
+#### 3. Frontend
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+---
+
+## 🚀 Deployment Status (Paseo Asset Hub)
+
+The contracts are live on the **Paseo Asset Hub (Revive EVM)**:
+- **Token42Profile**: `0xD7dD2d357A377beb0bbF89BfF0f0b36549e8476B`
+- **Token42Messaging**: `0x5f9b5ccAa4B13e23E41E9d3F9018963bE76f1347`
+
+---
+
+## 📖 Related Documentation
+
+For deeper technical dives, see the following guides:
+
+- 🧠 **[AI Integration Guide](guides/AI_INTEGRATION_GUIDE.md)**: How the AI Agent signs match intents for the blockchain.
+- 💻 **[Local Inference Setup](guides/LOCAL_INFERENCE.md)**: Setting up Ollama and Llama 3 for private local matching.
+- 👥 **[Local Testing Guide](guides/LOCAL_TESTING_GUIDE.md)**: Stepper-by-step walkthrough of a 2-user interaction.
+- 🎨 **[UI Integration Guide](guides/UI_INTEGRATION_GUIDE.md)**: Handling identity verification and messaging errors in React.
+- 🛠️ **[Hackathon Guide](guides/KITDOT_HACKATHON_GUIDE.md)**: Core development workflow and architecture.
 
 ---
 
@@ -190,11 +196,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 1.  **Mock Data**: The frontend initially populates some state with mock profile data to show the UI without waiting for IPFS/Contract indexing.
 2.  **Identity Simulation**: The People Chain identity check is simulated in the UI; in production, this calls the `0x...901` precompile via a `staticcall`.
 3.  **Storage**: Integration with Pinata (IPFS) is functional, but currently uses a public gateway for demonstration.
-4.  **Hardcoded Addresses**: The AI Agent's public key and contract addresses are hardcoded in `App.tsx` and `index.ts`.
-
-**FOR PRODUCTION:** These mocks should be replaced with the Phala SDK and real-time on-chain identity verification via the People Chain.
-
-> 📖 See [guides/KITDOT_HACKATHON_GUIDE.md](guides/KITDOT_HACKATHON_GUIDE.md) for the full development workflow.
+4.  **Slashing**: The moderation `/slash` endpoint is exposed for developers but not yet triggered by an automated on-chain oracle.
 
 ---
 
@@ -220,6 +222,6 @@ Connect Wallet  ──►  Verify Identity  ──►  Mint SBT Profile  ──�
 
 ## 📜 License
 
-none yet
+MIT
 
 

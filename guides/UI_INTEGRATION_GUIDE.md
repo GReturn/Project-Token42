@@ -28,11 +28,8 @@ The `Token42Profile` and `Token42Module` rely on a configurable identity precomp
 - When deploying to Paseo Testnet, ensure the frontend environment variables point to the correct smart contract addresses.
 - During local testing, the hardhat scripts use a mocked precompile address. The UI should connect to the local hardhat node when running dev environments.
 
-## 4. Error Handling Additions
-
-The smart contract features custom errors:
-- `MissingProfile()`: Thrown if either sender or receiver lacks an on-chain `Token42Profile` during messaging. The UI should map this revert to a user-friendly modal stating "You or the recipient does not have a verified profile."
-- `PrecompileFailed()`: Thrown if the Polkadot network node doesn't support the identity precompile.
+The smart contract features custom errors that the UI should handle:
+- `MissingProfile()`: Thrown if either sender or receiver lacks an on-chain `Token42Profile` during messaging.
+- `PrecompileFailed()`: Thrown if the Polkadot network node doesn't support the identity precompile (relevant during profile minting/updating).
 - `ScoreTooLow()`: Thrown if the AI Agent match score is below the minimum threshold (default 80).
-
-**Please refer to the contract ABI for exact error signatures.**
+- `NoActiveStake()`: Thrown if trying to claim/slash a message that isn't active.

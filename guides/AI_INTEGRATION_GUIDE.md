@@ -26,14 +26,20 @@ Both the Agent and the Contract use the following structure for signing:
     *   *Note: In production, this would be wrapped in an Express server listening on port 3001.*
 
 ### Step B: Frontend Request
-Your frontend should capture the user's bio and send it to the agent:
+Your frontend should capture the user's bio and send it to the agent. The agent expects the current user's profile, a list of potential matches, and the current on-chain nonce:
 
 ```typescript
-// Example call from React to Local Agent
-const { matchAddress, score, signature } = await fetch('http://localhost:3001/match', {
+// Example call from React App.tsx to Local Agent
+const response = await fetch('http://localhost:3001/match', {
     method: 'POST',
-    body: JSON.stringify({ bio: userBio })
-}).then(r => r.json());
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+        currentUser: { address, cid: userCID },
+        potentialMatches, // Array of { address, cid, personalityBio }
+        nonce: Number(nonce)
+    })
+});
+const { matchAddress, score, signature } = await response.json();
 ```
 
 ### Step C: Execute Staked Message

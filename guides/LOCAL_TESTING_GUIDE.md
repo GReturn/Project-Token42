@@ -67,9 +67,15 @@ To test interaction, you need two separate browser contexts:
 
 ## Step 6: Testing AI Moderation (Slashing)
 
-1.  If User A sends a harassing message, you can simulate a report.
-2.  Click **Report & Slash** (Available in Dev mode).
-3.  The local agent will receive the report, and the stake will be slashed (transferred to the treasury owner).
+Currently, the **Report & Slash** functionality is handled via the AI Agent's API rather than a UI button in the prototype.
+
+1.  To simulate a slashing event for harassment, send a POST request to the agent:
+    ```bash
+    curl -X POST http://localhost:3001/slash \
+    -H "Content-Type: application/json" \
+    -d '{"sender": "0xSenderAddress", "recipient": "0xRecipientAddress"}'
+    ```
+2.  The local agent will log the moderation alert. In a production TEE environment, this would trigger the actual on-chain `slashStake` call.
 
 ---
 
