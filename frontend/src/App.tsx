@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
 import { uploadToIPFS, fetchFromIPFS, UserProfile } from './utils/storage';
+import { toast, Toaster } from 'react-hot-toast';
 import Navbar from './components/Navbar';
 import GlassCard from './components/GlassCard';
 import StatusBadge from './components/StatusBadge';
@@ -140,7 +141,7 @@ function App() {
   };
 
   const createProfile = async () => {
-    if (!address || !profile.bio) return alert("Please enter a bio");
+    if (!address || !profile.bio) return toast.error("Please enter a bio");
     setLoading(true);
     try {
       const metadata: UserProfile = {
@@ -170,7 +171,7 @@ function App() {
       await tx.wait();
       
       setUserCID(cid);
-      alert(userCID ? "Profile Updated!" : "Soulbound Profile Minted!");
+      toast.success(userCID ? "Profile Updated!" : "Soulbound Profile Minted!");
       setStep('matching');
     } catch (error: any) {
       console.error("Profile operation failed:", error);
@@ -210,7 +211,7 @@ function App() {
       if (data) {
         setMatches([data]);
       } else {
-        alert("No high-score matches found yet.");
+        toast.error("No high-score matches found yet.");
       }
     } catch (error) {
       console.error("Matching failed:", error);
@@ -239,7 +240,7 @@ function App() {
       setTxHash(tx.hash);
       await tx.wait();
 
-      alert("Message Staked! You can now chat.");
+      toast.success("Message Staked! You can now chat.");
       setStep('chat');
     } catch (error: any) {
       console.error("Staking failed:", error);
@@ -259,6 +260,25 @@ function App() {
 
   return (
     <div className="App">
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          className: 'glass-toast',
+          style: {
+            background: 'rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(12px)',
+            color: '#fff',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '12px',
+          },
+          success: {
+            iconTheme: {
+              primary: '#00ffa3',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
       {/* Network Warning Banner */}
       {isWrongNetwork && (
         <div style={{ 
