@@ -143,7 +143,7 @@ function App() {
             {matches.map((m, i) => (
               <div key={i} className="card match-item">
                 <div>
-                  <strong className="mono text-truncate">{m.address}</strong>
+                  <strong className="mono text-truncate" title={m.address}>{m.address}</strong>
                   <div className="match-score">{m.score}% Match Score</div>
                 </div>
                 <button onClick={() => stakeAndMessage(m.address)} className="action-btn" style={{ width: 'auto', padding: '0.5rem 1rem' }}>
