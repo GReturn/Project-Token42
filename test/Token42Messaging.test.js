@@ -14,10 +14,27 @@ describe("Token42Messaging", function () {
         mockRUSD = await MockTokenFactory.deploy();
         await mockRUSD.waitForDeployment();
 
+        // Deploy Token42Profile
+        const ProfileFactory = await hre.ethers.getContractFactory("Token42Profile");
+        const profile = await ProfileFactory.deploy("0x0000000000000000000000000000000000000901");
+        await profile.waitForDeployment();
+        const profileAddress = await profile.getAddress();
+
+        // Standard precompile mock for all tests
+        const mockBytecode = "0x600160005260206000f3"; 
+        await hre.network.provider.send("hardhat_setCode", [
+            "0x0000000000000000000000000000000000000901",
+            mockBytecode,
+        ]);
+
+        await profile.connect(sender).mintProfile("QmSender");
+        await profile.connect(recipient).mintProfile("QmRecipient");
+
         // Deploy Token42Messaging
         const MessagingFactory = await hre.ethers.getContractFactory("Token42Messaging");
         messaging = await MessagingFactory.deploy(
             await mockRUSD.getAddress(),
+            profileAddress,
             aiAgent.address
         );
         await messaging.waitForDeployment();

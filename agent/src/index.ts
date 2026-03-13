@@ -3,8 +3,8 @@ import axios from 'axios';
 
 interface UserProfile {
     address: string;
-    personalityBio: string;
-    personalityVector?: number[]; // Added by the agent
+    personalityBio?: string; // Optional because we fetch it from CID
+    personalityVector?: number[];
     cid: string;
 }
 
@@ -71,15 +71,40 @@ export class Token42Agent {
     }
 
     /**
+     * @dev Fetch JSON data from IPFS via a public gateway.
+     */
+    public async fetchFromIPFS(cid: string): Promise<any> {
+        // We use the Pinata public gateway since it's generally faster and we are pinning with them
+        const url = `https://gateway.pinata.cloud/ipfs/${cid}`;
+        try {
+            const response = await axios.get(url, { timeout: 10000 });
+            return response.data;
+        } catch (error) {
+            console.error(`Failed to fetch CID ${cid} from IPFS:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * @dev Handle matching request using local inference.
      */
     public async handleMatchRequest(currentUser: UserProfile, potentialMatches: UserProfile[], nonce: number) {
+        // Fetch bios if not provided
+        if (!currentUser.personalityBio && currentUser.cid) {
+            const data = await this.fetchFromIPFS(currentUser.cid);
+            currentUser.personalityBio = data.bio;
+        }
+
         console.log(`Generating embedding for ${currentUser.address}...`);
-        const userVector = await this.generateEmbedding(currentUser.personalityBio);
+        const userVector = await this.generateEmbedding(currentUser.personalityBio || "");
 
         console.log(`Analyzing matches...`);
         const resultPromises = potentialMatches.map(async (match) => {
-            const matchVector = await this.generateEmbedding(match.personalityBio);
+            if (!match.personalityBio && match.cid) {
+                const data = await this.fetchFromIPFS(match.cid);
+                match.personalityBio = data.bio;
+            }
+            const matchVector = await this.generateEmbedding(match.personalityBio || "");
             return {
                 address: match.address,
                 score: this.calculateSimilarity(userVector, matchVector)
