@@ -15,6 +15,10 @@ interface IERC20 {
     function balanceOf(address account) external view returns (uint256);
 }
 
+interface IToken42Profile {
+    function hasProfile(address user) external view returns (bool);
+}
+
 /**
  * @title Token42Messaging
  * @dev Staked messaging with AI-verified matches and anti-spam slashing.
@@ -28,6 +32,7 @@ interface IERC20 {
  */
 contract Token42Messaging {
     IERC20 public immutable rUSD;
+    IToken42Profile public immutable profileContract;
     address public owner;
     
     mapping(address => bool) public isAdmin;
@@ -60,6 +65,7 @@ contract Token42Messaging {
     error AlreadyAdmin();
     error NotAnAdmin();
     error CannotRemoveOwner();
+    error MissingProfile();
 
     // --- Events ---
     event MessageStaked(
@@ -97,9 +103,10 @@ contract Token42Messaging {
         _;
     }
 
-    constructor(address _rUSD, address _aiAgent) {
-        if (_rUSD == address(0) || _aiAgent == address(0)) revert InvalidAddress();
+    constructor(address _rUSD, address _profileContract, address _aiAgent) {
+        if (_rUSD == address(0) || _profileContract == address(0) || _aiAgent == address(0)) revert InvalidAddress();
         rUSD = IERC20(_rUSD);
+        profileContract = IToken42Profile(_profileContract);
         owner = msg.sender;
         isAdmin[_aiAgent] = true;
         isAdmin[msg.sender] = true;
@@ -161,6 +168,8 @@ contract Token42Messaging {
         uint256 matchScore,
         bytes calldata signature
     ) external {
+        if (!profileContract.hasProfile(msg.sender)) revert MissingProfile();
+        if (!profileContract.hasProfile(recipient)) revert MissingProfile();
         if (matchScore < minMatchScore) revert ScoreTooLow();
 
         uint256 currentNonce = nonces[msg.sender];

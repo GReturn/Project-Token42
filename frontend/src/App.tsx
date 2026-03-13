@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
+import { uploadToIPFS } from './utils/storage';
 
 // Contract Addresses (Paseo Asset Hub - PolkaVM)
-const PROFILE_CONTRACT_ADDRESS = "0xf7cA780f3ad9173108fCd90dF0c156E1715EFf46";
-const MESSAGING_CONTRACT_ADDRESS = "0x5f963C7599990c941217E1d0D317F601dC1794CE";
+const PROFILE_CONTRACT_ADDRESS = "0xD7dD2d357A377beb0bbF89BfF0f0b36549e8476B";
+const MESSAGING_CONTRACT_ADDRESS = "0x5f9b5ccAa4B13e23E41E9d3F9018963bE76f1347";
 
 function App() {
   const [address, setAddress] = useState<string | null>(null);
   const [step, setStep] = useState<'connect' | 'profile' | 'matching' | 'chat'>('connect');
   const [isVerified, setIsVerified] = useState(false);
   const [matches, setMatches] = useState<any[]>([]);
+  const [bio, setBio] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [txHash, setTxHash] = useState<string | null>(null);
 
   const connectWallet = async () => {
     if ((window as any).ethereum) {
@@ -29,9 +33,39 @@ function App() {
   };
 
   const createProfile = async () => {
-    console.log("Minting Soulbound Profile...");
-    // Integration with Token42Profile.sol would go here
-    setStep('matching');
+    if (!address || !bio) return alert("Please enter a bio");
+    
+    setLoading(true);
+    try {
+      console.log("Uploading bio to IPFS...");
+      const cid = await uploadToIPFS(address, {
+        bio,
+        timestamp: Date.now(),
+        creator: address
+      });
+      console.log("IPFS CID:", cid);
+
+      console.log("Minting Soulbound Profile...");
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const profileContract = new ethers.Contract(
+        PROFILE_CONTRACT_ADDRESS,
+        ["function mintProfile(string cid) public"],
+        signer
+      );
+
+      const tx = await profileContract.mintProfile(cid);
+      setTxHash(tx.hash);
+      await tx.wait();
+      
+      console.log("Profile Minted!");
+      setStep('matching');
+    } catch (error: any) {
+      console.error("Profile creation failed:", error);
+      alert(`Error: ${error.message || "Unknown error"}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const findMatches = async () => {
@@ -73,8 +107,25 @@ function App() {
             <h2>Human Verification Success</h2>
             <p>Identity: {address}</p>
             <p style={{ color: '#00FFCC' }}>✓ Real Human status confirmed via People Chain</p>
-            <textarea placeholder="Tell us about yourself..." className="bio-input" />
-            <button onClick={createProfile} className="connect-btn">Mint Soulbound Profile</button>
+            <textarea 
+              placeholder="Tell us about yourself..." 
+              className="bio-input" 
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              disabled={loading}
+            />
+            <button 
+              onClick={createProfile} 
+              className="connect-btn"
+              disabled={loading || !bio}
+            >
+              {loading ? "Processing..." : "Mint Soulbound Profile"}
+            </button>
+            {txHash && (
+              <p style={{ fontSize: '0.8rem', marginTop: '1rem' }}>
+                Tx: <a href={`https://blockscout-passet-hub.parity-testnet.parity.io/tx/${txHash}`} target="_blank" rel="noreferrer" style={{ color: '#FF3366' }}>{txHash.slice(0, 10)}...</a>
+              </p>
+            )}
           </div>
         )}
 
@@ -92,7 +143,7 @@ function App() {
                   <div className="match-score">{m.score}% Match Score</div>
                 </div>
                 <button onClick={() => stakeAndMessage(m.address)} className="action-btn" style={{ width: 'auto', padding: '0.5rem 1rem' }}>
-                  Stake & Lick
+                  Stake & Message
                 </button>
               </div>
             ))}

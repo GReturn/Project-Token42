@@ -33,8 +33,7 @@ contract Token42Profile {
 
     address public owner;
 
-    IIdentity public constant IDENTITY_PRECOMPILE =
-        IIdentity(address(0x0000000000000000000000000000000000000901));
+    IIdentity public immutable IDENTITY_PRECOMPILE;
 
     // --- Custom Errors ---
     error NotOwner();
@@ -82,7 +81,9 @@ contract Token42Profile {
         _;
     }
 
-    constructor() {
+    constructor(address _identityPrecompile) {
+        if (_identityPrecompile == address(0)) revert InvalidAddress();
+        IDENTITY_PRECOMPILE = IIdentity(_identityPrecompile);
         owner = msg.sender;
         isAdmin[msg.sender] = true;
         _nextTokenId = 1; // Start at 1 to avoid ambiguity with legacy indexers
