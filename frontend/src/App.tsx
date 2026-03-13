@@ -408,18 +408,14 @@ function App() {
           </div>
           <div className="dashboard-grid animate-in">
             <GlassCard>
-              <div className="step-indicator">
-                <div className="step-dot completed" />
-                <div className="step-line" />
-                <div className="step-dot active" />
-                <div className="step-line" />
-                <div className="step-dot" />
-              </div>
 
               <div className="card-header">
-                <h2>Profile</h2>
-                <p style={{ color: 'var(--text-muted)' }}>
-                  Identity verified via People Chain <StatusBadge status="verified" label="Verified" />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <h2 style={{ margin: 0 }}>Profile</h2>
+                  <StatusBadge status="verified" label="Verified" />
+                </div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  Identity verified via People Chain
                 </p>
               </div>
               
