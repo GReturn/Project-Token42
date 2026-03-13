@@ -54,6 +54,7 @@ function App() {
     { text: "Hi! I saw our match score was high. Want to chat about decentralized systems?", sent: true }
   ]);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [initialProfile, setInitialProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     if (address) {
@@ -119,6 +120,7 @@ function App() {
         setUserCID(cid);
         const metadata = await fetchFromIPFS(cid);
         setProfile(metadata);
+        setInitialProfile(metadata);
         setStep('matching');
       } else {
         setStep('profile');
@@ -176,6 +178,7 @@ function App() {
       await tx.wait();
       
       setUserCID(cid);
+      setInitialProfile(metadata);
       toast.success(userCID ? "Profile Updated!" : "Soulbound Profile Minted!");
       setStep('matching');
     } catch (error: any) {
@@ -262,6 +265,11 @@ function App() {
   };
 
   const isLanding = step === 'connect';
+
+      const hasChanges = !userCID || (
+    profile.name !== initialProfile?.name || 
+    profile.bio !== initialProfile?.bio
+  );
 
   return (
     <div className="App">
@@ -402,12 +410,12 @@ function App() {
               <button 
                 onClick={createProfile} 
                 className="primary-btn"
-                disabled={loading || !profile.bio}
+                disabled={loading || !profile.bio || (userCID ? !hasChanges : false)}
               >
                 {loading ? (
                   <span className="loading-pulse">{userCID ? "Updating Profile..." : "Minting Soulbound Token..."}</span>
                 ) : (
-                  userCID ? "Update Profile →" : "Mint Soulbound Profile →"
+                  userCID ? (hasChanges ? "Update Profile →" : "No Changes Detected") : "Mint Soulbound Profile →"
                 )}
               </button>
             </GlassCard>
