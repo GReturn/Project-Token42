@@ -130,6 +130,9 @@ body {
   font-weight: 800;
   font-size: 1.2rem;
   letter-spacing: -0.5px;
+}
+
+.logo-text {
   background: linear-gradient(135deg, var(--primary), #FF99CC);
   -webkit-background-clip: text;
   background-clip: text;
@@ -137,6 +140,9 @@ body {
 }
 
 .nav-logo img { width: 28px; height: 28px; }
+
+.nav-icon { display: none; }
+.nav-text { display: inline; }
 
 .nav-links { display: flex; gap: 0.25rem; }
 
@@ -155,6 +161,15 @@ body {
 
 .nav-links button:hover { color: var(--text); background: var(--surface); }
 .nav-links button.active { color: var(--accent); background: rgba(0,255,204,0.06); }
+
+.nav-links button .nav-icon {
+  margin-right: 0;
+  transition: transform 0.2s;
+}
+
+.nav-links button:hover .nav-icon {
+  transform: translateY(-2px);
+}
 
 .address-pill {
   background: var(--surface);
@@ -193,7 +208,7 @@ body {
   font-weight: 900;
   letter-spacing: -2px;
   line-height: 1.1;
-  background: linear-gradient(135deg, #fff 30%, var(--primary) 70%, var(--accent));
+  background: linear-gradient(135deg, var(--primary), #FF99CC);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -608,6 +623,25 @@ body {
 
 .empty-state p { font-size: 1rem; line-height: 1.6; }
 
+/* ========== PAGE BRANDING ========== */
+.page-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  margin: 1rem 0 3rem;
+  font-weight: 900;
+  font-size: 2.2rem;
+  letter-spacing: -1.5px;
+}
+
+.page-brand img {
+  width: 48px;
+  height: 48px;
+}
+
+.mobile-only { display: none; }
+
 /* ========== FOOTER ========== */
 .app-footer {
   text-align: center;
@@ -643,10 +677,26 @@ body {
     z-index: 1000;
     gap: 0;
     box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+    display: flex;
   }
 
-  .nav-links button { font-size: 0.75rem; padding: 0.6rem 0.8rem; }
+  .nav-links button { 
+    font-size: 0.75rem; 
+    padding: 0.6rem; 
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+  }
+
+  .nav-icon { display: block; }
+  .nav-text { display: none; }
+  .navbar .logo-text { display: none; }
+
   .nav-user { display: none; }
+
+  .mobile-only { display: flex; }
 
   .main { 
     padding: 1rem; 

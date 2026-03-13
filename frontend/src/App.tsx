@@ -365,6 +365,10 @@ function App() {
       {/* ===== PROFILE CREATION ===== */}
       {step === 'profile' && (
         <main className="main">
+          <div className="page-brand mobile-only">
+            <img src="/token42.svg" alt="Token42" />
+            <span className="logo-text">Token42</span>
+          </div>
           <div className="dashboard-grid animate-in">
             <GlassCard>
               <div className="step-indicator">
@@ -376,7 +380,7 @@ function App() {
               </div>
 
               <div className="card-header">
-                <h2>Create Your Profile</h2>
+                <h2>Profile</h2>
                 <p style={{ color: 'var(--text-muted)' }}>
                   Identity verified via People Chain <StatusBadge status="verified" label="Verified" />
                 </p>
@@ -451,6 +455,10 @@ function App() {
       {/* ===== DISCOVERY / MATCHING ===== */}
       {step === 'matching' && (
         <main className="main">
+          <div className="page-brand mobile-only">
+            <img src="/token42.svg" alt="Token42" />
+            <span className="logo-text">Token42</span>
+          </div>
           <div className="dashboard-grid animate-in">
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -541,10 +549,14 @@ function App() {
       {/* ===== CHAT ===== */}
       {step === 'chat' && (
         <main className="main">
+          <div className="page-brand mobile-only">
+            <img src="/token42.svg" alt="Token42" />
+            <span className="logo-text">Token42</span>
+          </div>
           <GlassCard className="chat-container animate-in">
             <div className="chat-header">
               <div className="chat-header-info">
-                <h2>Secure Chat</h2>
+                <h2>Messages</h2>
                 <p>End-to-end verified. Harassment = stake slashed.</p>
               </div>
               <StatusBadge status="verified" label="Staked 1 rUSD" />
