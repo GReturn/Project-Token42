@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
 import { uploadToIPFS, fetchFromIPFS, UserProfile } from './utils/storage';
@@ -50,11 +50,19 @@ function App() {
   const [userCID, setUserCID] = useState<string | null>(null);
   const [isWrongNetwork, setIsWrongNetwork] = useState(false);
   const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState([
-    { text: "Hi! I saw our match score was high. Want to chat about decentralized systems?", sent: true }
-  ]);
+  const [activeChat, setActiveChat] = useState<string | null>(null);
+  const [isMobileSessionOpen, setIsMobileSessionOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Record<string, { text: string; sent: boolean }[]>>({
+    "0x375ac89e80AE2169EC049B5780831A58bab5f7e3": [
+      { text: "Hi! I saw our match score was high. Want to chat about decentralized systems?", sent: true }
+    ]
+  });
   const [isConnecting, setIsConnecting] = useState(false);
   const [initialProfile, setInitialProfile] = useState<UserProfile | null>(null);
+  const [showRecipientBio, setShowRecipientBio] = useState(false);
+  const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const MAX_CHAT_CHARS = 500;
 
   useEffect(() => {
     if (address) {
@@ -248,6 +256,15 @@ function App() {
       setTxHash(tx.hash);
       await tx.wait();
 
+      const recipient = match.matchAddress;
+      setActiveChat(recipient);
+      if (!chatMessages[recipient]) {
+        setChatMessages(prev => ({
+          ...prev,
+          [recipient]: []
+        }));
+      }
+
       toast.success("Message Staked! You can now chat.");
       setStep('chat');
     } catch (error: any) {
@@ -259,9 +276,30 @@ function App() {
   };
 
   const sendChat = () => {
-    if (!chatInput.trim()) return;
-    setChatMessages(prev => [...prev, { text: chatInput, sent: true }]);
+    if (!chatInput.trim() || !activeChat) return;
+    
+    setChatMessages(prev => ({
+      ...prev,
+      [activeChat]: [...(prev[activeChat] || []), { text: chatInput, sent: true }]
+    }));
+    
     setChatInput('');
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.style.height = 'auto';
+    }
+  };
+
+  const handleChatInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    if (value.length <= MAX_CHAT_CHARS) {
+      setChatInput(value);
+      
+      // Auto-resize
+      if (chatTextareaRef.current) {
+        chatTextareaRef.current.style.height = 'auto';
+        chatTextareaRef.current.style.height = `${chatTextareaRef.current.scrollHeight}px`;
+      }
+    }
   };
 
   const isLanding = step === 'connect';
@@ -371,18 +409,14 @@ function App() {
           </div>
           <div className="dashboard-grid animate-in">
             <GlassCard>
-              <div className="step-indicator">
-                <div className="step-dot completed" />
-                <div className="step-line" />
-                <div className="step-dot active" />
-                <div className="step-line" />
-                <div className="step-dot" />
-              </div>
 
               <div className="card-header">
-                <h2>Profile</h2>
-                <p style={{ color: 'var(--text-muted)' }}>
-                  Identity verified via People Chain <StatusBadge status="verified" label="Verified" />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <h2 style={{ margin: 0 }}>Profile</h2>
+                  <StatusBadge status="verified" label="Verified" />
+                </div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  Identity verified via People Chain
                 </p>
               </div>
               
@@ -548,39 +582,145 @@ function App() {
 
       {/* ===== CHAT ===== */}
       {step === 'chat' && (
-        <main className="main">
+        <main className="main chat-page">
           <div className="page-brand mobile-only">
             <img src="/token42.svg" alt="Token42" />
             <span className="logo-text">Token42</span>
           </div>
-          <GlassCard className="chat-container animate-in">
-            <div className="chat-header">
-              <div className="chat-header-info">
-                <h2>Messages</h2>
-                <p>End-to-end verified. Harassment = stake slashed.</p>
-              </div>
-              <StatusBadge status="verified" label="Staked 1 rUSD" />
-            </div>
-
-            <div className="chat-messages">
-              {chatMessages.map((msg, i) => (
-                <div key={i} className={`chat-bubble ${msg.sent ? 'sent' : 'received'}`}>
-                  {msg.text}
+          
+          <div className="chat-layout animate-in">
+            {/* Chat Sidebar / Mobile Dropdown */}
+            <GlassCard className={`chat-sidebar ${isMobileSessionOpen ? 'mobile-open' : ''}`}>
+              <div 
+                className="sidebar-header" 
+                onClick={() => setIsMobileSessionOpen(!isMobileSessionOpen)}
+              >
+                <h3>Sessions</h3>
+                <div className="mobile-session-selector">
+                  {activeChat ? (
+                    <div className="active-session-summary">
+                      <div className="session-avatar tiny">
+                        {activeChat.slice(2, 4).toUpperCase()}
+                      </div>
+                      <span>{activeChat.slice(0, 6)}...{activeChat.slice(-4)}</span>
+                    </div>
+                  ) : <span>Select Chat</span>}
+                  <svg className={`dropdown-icon ${isMobileSessionOpen ? 'open' : ''}`} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                 </div>
-              ))}
-            </div>
+              </div>
+              
+              <div className="session-list">
+                {Object.keys(chatMessages).map((addr) => (
+                  <div 
+                    key={addr} 
+                    className={`session-item ${activeChat === addr ? 'active' : ''}`}
+                    onClick={() => {
+                      setActiveChat(addr);
+                      setIsMobileSessionOpen(false);
+                    }}
+                  >
+                    <div className="session-avatar">
+                      {addr.slice(2, 4).toUpperCase()}
+                    </div>
+                    <div className="session-info">
+                      <div className="session-address">{addr.slice(0, 6)}...{addr.slice(-4)}</div>
+                      <div className="session-last-msg">
+                        {chatMessages[addr].length > 0 
+                          ? chatMessages[addr][chatMessages[addr].length - 1].text 
+                          : "No messages yet"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
 
-            <div className="chat-input-bar">
-              <input 
-                className="chat-input" 
-                placeholder="Type a message..." 
-                value={chatInput} 
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && sendChat()}
-              />
-              <button className="chat-send-btn" onClick={sendChat}>Send</button>
+            {/* Chat Main */}
+            <div className="chat-main-container">
+              {activeChat ? (
+                <>
+                  <div className="chat-external-header">
+                    <div className="chat-header-info">
+                      <div className="chat-recipient-address">
+                        {activeChat.slice(0, 8)}...{activeChat.slice(-6)}
+                      </div>
+                      <p className="chat-verification-msg">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', color: 'var(--accent)' }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        End-to-end encrypted • Protected Session
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <button 
+                        className="text-btn bio-toggle-btn" 
+                        onClick={() => setShowRecipientBio(!showRecipientBio)}
+                        style={{ color: showRecipientBio ? 'var(--accent)' : 'var(--text-muted)' }}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="bio-icon"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        <span className="bio-btn-text">{showRecipientBio ? 'Hide Bio' : 'View Bio'}</span>
+                      </button>
+                      <StatusBadge status="verified" label="Staked" />
+                    </div>
+                  </div>
+
+                  {showRecipientBio && (
+                    <div className="recipient-bio-overlay animate-in">
+                      <p>{chatMessages[activeChat]?.[0]?.text ? "Bio extracted from AI Match" : "Bio shared via protocol"}</p>
+                      <div className="bio-content">
+                        {/* In a real app, we'd fetch the recipient's bio from IPFS using their CID. 
+                            For now, we'll show a placeholder or mock info. */}
+                        Passionate about decentralized systems and AI. Looking for someone to build the future with.
+                      </div>
+                    </div>
+                  )}
+
+                  <GlassCard className="chat-container">
+                    <div className="chat-messages">
+                    {(chatMessages[activeChat] || []).map((msg, i) => (
+                      <div key={i} className={`chat-bubble ${msg.sent ? 'sent' : 'received'}`}>
+                        {msg.text}
+                      </div>
+                    ))}
+                    {chatMessages[activeChat]?.length === 0 && (
+                      <div className="empty-chat">
+                        <p>No messages yet. Start the conversation!</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="chat-input-bar">
+                    <div style={{ flex: 1, position: 'relative' }}>
+                      <textarea 
+                        ref={chatTextareaRef}
+                        className="chat-input" 
+                        placeholder="Type a message..." 
+                        value={chatInput} 
+                        onChange={handleChatInputChange}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            sendChat();
+                          }
+                        }}
+                        rows={1}
+                      />
+                      <div className="chat-char-count">
+                        {chatInput.length}/{MAX_CHAT_CHARS}
+                      </div>
+                    </div>
+                    <button className="chat-send-btn" onClick={sendChat}>Send</button>
+                  </div>
+                </GlassCard>
+                </>
+              ) : (
+                <GlassCard className="chat-container">
+                  <div className="no-chat-selected">
+                    <div className="empty-state-icon">💬</div>
+                    <p>Select a session to start chatting</p>
+                  </div>
+                </GlassCard>
+              )}
             </div>
-          </GlassCard>
+          </div>
         </main>
       )}
 

@@ -27,7 +27,8 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label }) => {
         borderRadius: '12px',
         fontSize: '0.75rem',
         fontWeight: 'bold',
-        textTransform: 'uppercase'
+        textTransform: 'uppercase',
+        whiteSpace: 'nowrap'
       }}
     >
       {label || status}
