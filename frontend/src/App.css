@@ -137,6 +137,7 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  display: inline-block; /* Ensure it stays visible */
 }
 
 .nav-logo img { width: 28px; height: 28px; }
@@ -886,7 +887,13 @@ body {
 }
 
 @media (max-width: 768px) {
-  .navbar { padding: 0 1rem; }
+  .navbar { 
+    padding: 0 1rem; 
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 1100; /* Above everything except maybe modals */
+    background: rgba(5, 5, 8, 0.85); /* Slightly more opaque on mobile for readability */
+  }
 
   .nav-links {
     position: fixed;
@@ -915,7 +922,11 @@ body {
 
   .nav-icon { display: block; }
   .nav-text { display: none; }
-  .navbar .logo-text { display: none; }
+  /* Show logo text on mobile too, but maybe a bit smaller if needed */
+  .navbar .logo-text { 
+    display: inline-block; 
+    font-size: 1.1rem;
+  }
 
   .nav-user { display: none; }
 
@@ -923,6 +934,7 @@ body {
 
   .main { 
     padding: 1rem; 
+    padding-top: calc(var(--nav-height) + 1rem); /* Space for fixed top nav */
     padding-bottom: calc(120px + env(safe-area-inset-bottom, 20px)); 
   }
   .card-header h2 { font-size: 1.3rem; }
