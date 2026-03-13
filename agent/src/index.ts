@@ -70,6 +70,12 @@ export class Token42Agent {
     }
 
     public async fetchFromIPFS(cid: string): Promise<any> {
+        // Handle mock CIDs for local testing to avoid 400 errors
+        if (cid.toLowerCase().includes("mock")) {
+            console.log(`Bypassing IPFS fetch for mock CID: ${cid}`);
+            return { bio: "This is a mock personality bio for local matching. I enjoy decentralized tech and community building." };
+        }
+
         const url = `https://gateway.pinata.cloud/ipfs/${cid}`;
         try {
             const response = await axios.get(url, { timeout: 10000 });

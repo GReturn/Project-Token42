@@ -100,7 +100,11 @@ function App() {
       console.log("Calling Local AI Agent Matching Engine...");
       
       const potentialMatches = [
-        { address: "0x375ac89e80AE2169EC049B5780831A58bab5f7e3", cid: "QmX123...mock" },
+        { 
+          address: "0x375ac89e80AE2169EC049B5780831A58bab5f7e3", 
+          cid: "QmX123...mock",
+          personalityBio: "I am a passionate explorer of decentralized systems and artificial intelligence. Looking for someone to build the future with."
+        },
       ];
 
       const provider = new ethers.BrowserProvider((window as any).ethereum);
