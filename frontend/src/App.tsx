@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
 import { uploadToIPFS, fetchFromIPFS, UserProfile } from './utils/storage';
@@ -55,6 +55,9 @@ function App() {
   ]);
   const [isConnecting, setIsConnecting] = useState(false);
   const [initialProfile, setInitialProfile] = useState<UserProfile | null>(null);
+  const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const MAX_CHAT_CHARS = 500;
 
   useEffect(() => {
     if (address) {
@@ -262,6 +265,22 @@ function App() {
     if (!chatInput.trim()) return;
     setChatMessages(prev => [...prev, { text: chatInput, sent: true }]);
     setChatInput('');
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.style.height = 'auto';
+    }
+  };
+
+  const handleChatInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    if (value.length <= MAX_CHAT_CHARS) {
+      setChatInput(value);
+      
+      // Auto-resize
+      if (chatTextareaRef.current) {
+        chatTextareaRef.current.style.height = 'auto';
+        chatTextareaRef.current.style.height = `${chatTextareaRef.current.scrollHeight}px`;
+      }
+    }
   };
 
   const isLanding = step === 'connect';
@@ -571,13 +590,25 @@ function App() {
             </div>
 
             <div className="chat-input-bar">
-              <input 
-                className="chat-input" 
-                placeholder="Type a message..." 
-                value={chatInput} 
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && sendChat()}
-              />
+              <div style={{ flex: 1, position: 'relative' }}>
+                <textarea 
+                  ref={chatTextareaRef}
+                  className="chat-input" 
+                  placeholder="Type a message..." 
+                  value={chatInput} 
+                  onChange={handleChatInputChange}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendChat();
+                    }
+                  }}
+                  rows={1}
+                />
+                <div className="chat-char-count">
+                  {chatInput.length}/{MAX_CHAT_CHARS}
+                </div>
+              </div>
               <button className="chat-send-btn" onClick={sendChat}>Send</button>
             </div>
           </GlassCard>
