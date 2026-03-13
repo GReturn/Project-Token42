@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
 import { uploadToIPFS, fetchFromIPFS, UserProfile } from './utils/storage';
+import { toast, Toaster } from 'react-hot-toast';
 import Navbar from './components/Navbar';
+import Loading from './components/Loading';
 import GlassCard from './components/GlassCard';
 import StatusBadge from './components/StatusBadge';
 
@@ -13,6 +15,7 @@ const RUSD_CONTRACT_ADDRESS = "0x...YOUR_RUSD_ADDRESS_HERE...";
 
 const PROFILE_ABI = [
   "function mintProfile(string cid) public",
+  "function updateProfile(string newCid) public",
   "function hasProfile(address user) public view returns (bool)",
   "function getProfileCID(address user) public view returns (string)"
 ];
@@ -50,6 +53,8 @@ function App() {
   const [chatMessages, setChatMessages] = useState([
     { text: "Hi! I saw our match score was high. Want to chat about decentralized systems?", sent: true }
   ]);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [initialProfile, setInitialProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     if (address) {
@@ -115,6 +120,7 @@ function App() {
         setUserCID(cid);
         const metadata = await fetchFromIPFS(cid);
         setProfile(metadata);
+        setInitialProfile(metadata);
         setStep('matching');
       } else {
         setStep('profile');
@@ -127,11 +133,14 @@ function App() {
 
   const connectWallet = async () => {
     if ((window as any).ethereum) {
+      setIsConnecting(true);
       try {
         const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
         setAddress(accounts[0]);
       } catch (error) {
         console.error("Connection failed:", error);
+      } finally {
+        setIsConnecting(false);
       }
     } else {
       alert("Please install SubWallet or MetaMask!");
@@ -139,7 +148,7 @@ function App() {
   };
 
   const createProfile = async () => {
-    if (!address || !profile.bio) return alert("Please enter a bio");
+    if (!address || !profile.bio) return toast.error("Please enter a bio");
     setLoading(true);
     try {
       const metadata: UserProfile = {
@@ -154,14 +163,26 @@ function App() {
       const signer = await provider.getSigner();
       const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, signer);
 
-      const tx = await profileContract.mintProfile(cid);
+      let tx;
+      if (userCID) {
+        // Profile already exists, update it
+        console.log("Updating existing profile...");
+        tx = await profileContract.updateProfile(cid);
+      } else {
+        // No profile found, mint a new one
+        console.log("Minting new soulbound profile...");
+        tx = await profileContract.mintProfile(cid);
+      }
+
       setTxHash(tx.hash);
       await tx.wait();
       
       setUserCID(cid);
+      setInitialProfile(metadata);
+      toast.success(userCID ? "Profile Updated!" : "Soulbound Profile Minted!");
       setStep('matching');
     } catch (error: any) {
-      console.error("Profile creation failed:", error);
+      console.error("Profile operation failed:", error);
       alert(`Error: ${error.message || "Unknown error"}`);
     } finally {
       setLoading(false);
@@ -198,7 +219,7 @@ function App() {
       if (data) {
         setMatches([data]);
       } else {
-        alert("No high-score matches found yet.");
+        toast.error("No high-score matches found yet.");
       }
     } catch (error) {
       console.error("Matching failed:", error);
@@ -227,7 +248,7 @@ function App() {
       setTxHash(tx.hash);
       await tx.wait();
 
-      alert("Message Staked! You can now chat.");
+      toast.success("Message Staked! You can now chat.");
       setStep('chat');
     } catch (error: any) {
       console.error("Staking failed:", error);
@@ -245,8 +266,35 @@ function App() {
 
   const isLanding = step === 'connect';
 
+      const hasChanges = !userCID || (
+    profile.name !== initialProfile?.name || 
+    profile.bio !== initialProfile?.bio
+  );
+
   return (
     <div className="App">
+      {(loading || isConnecting) && (
+        <Loading message={isConnecting ? "Connecting Wallet..." : "Processing Transaction..."} />
+      )}
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          className: 'glass-toast',
+          style: {
+            background: 'rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(12px)',
+            color: '#fff',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '12px',
+          },
+          success: {
+            iconTheme: {
+              primary: '#00ffa3',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
       {/* Network Warning Banner */}
       {isWrongNetwork && (
         <div style={{ 
@@ -317,6 +365,10 @@ function App() {
       {/* ===== PROFILE CREATION ===== */}
       {step === 'profile' && (
         <main className="main">
+          <div className="page-brand mobile-only">
+            <img src="/token42.svg" alt="Token42" />
+            <span className="logo-text">Token42</span>
+          </div>
           <div className="dashboard-grid animate-in">
             <GlassCard>
               <div className="step-indicator">
@@ -328,7 +380,7 @@ function App() {
               </div>
 
               <div className="card-header">
-                <h2>Create Your Profile</h2>
+                <h2>Profile</h2>
                 <p style={{ color: 'var(--text-muted)' }}>
                   Identity verified via People Chain <StatusBadge status="verified" label="Verified" />
                 </p>
@@ -362,12 +414,12 @@ function App() {
               <button 
                 onClick={createProfile} 
                 className="primary-btn"
-                disabled={loading || !profile.bio}
+                disabled={loading || !profile.bio || (userCID ? !hasChanges : false)}
               >
                 {loading ? (
-                  <span className="loading-pulse">Minting Soulbound Token...</span>
+                  <span className="loading-pulse">{userCID ? "Updating Profile..." : "Minting Soulbound Token..."}</span>
                 ) : (
-                  "Mint Soulbound Profile →"
+                  userCID ? (hasChanges ? "Update Profile →" : "No Changes Detected") : "Mint Soulbound Profile →"
                 )}
               </button>
             </GlassCard>
@@ -403,6 +455,10 @@ function App() {
       {/* ===== DISCOVERY / MATCHING ===== */}
       {step === 'matching' && (
         <main className="main">
+          <div className="page-brand mobile-only">
+            <img src="/token42.svg" alt="Token42" />
+            <span className="logo-text">Token42</span>
+          </div>
           <div className="dashboard-grid animate-in">
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -493,10 +549,14 @@ function App() {
       {/* ===== CHAT ===== */}
       {step === 'chat' && (
         <main className="main">
+          <div className="page-brand mobile-only">
+            <img src="/token42.svg" alt="Token42" />
+            <span className="logo-text">Token42</span>
+          </div>
           <GlassCard className="chat-container animate-in">
             <div className="chat-header">
               <div className="chat-header-info">
-                <h2>Secure Chat</h2>
+                <h2>Messages</h2>
                 <p>End-to-end verified. Harassment = stake slashed.</p>
               </div>
               <StatusBadge status="verified" label="Staked 1 rUSD" />
