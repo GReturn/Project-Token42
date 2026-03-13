@@ -9,7 +9,7 @@ describe("Token42Profile", function () {
     beforeEach(async function () {
         [owner, user1, user2] = await hre.ethers.getSigners();
         const ProfileFactory = await hre.ethers.getContractFactory("Token42Profile");
-        profile = await ProfileFactory.deploy();
+        profile = await ProfileFactory.deploy("0x0000000000000000000000000000000000000901");
         await profile.waitForDeployment();
 
         // Standard precompile mock for all tests
