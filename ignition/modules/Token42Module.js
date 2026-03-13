@@ -1,16 +1,32 @@
 const { buildModule } = require("@nomicfoundation/hardhat-ignition/modules");
 
+const USE_MOCKS = process.env.USE_MOCKS !== "false"; 
+
 module.exports = buildModule("Token42Module", (m) => {
+    let identityAddress;
+    let rUSDAddress;
+
+    if (USE_MOCKS) {
+        // Dev/Hackathon Mode: Deploy and use local mocks
+        identityAddress = m.contract("MockIdentityPrecompile", []);
+        rUSDAddress = m.contract("MockRUSD", []);
+    } else {
+        // Production Mode: Use real parameters
+        identityAddress = m.getParameter("identityPrecompileAddress", "0x0000000000000000000000000000000000000901");
+        rUSDAddress = m.getParameter("rUSDAddress", "0x0000000000000000000000000000000000000000"); 
+    }
+
+    // AI Agent: Admin address for the messaging contract
+    const aiAgent = m.getParameter("aiAgentAddress", "0x375ac89e80AE2169EC049B5780831A58bab5f7e3");
+
     // Deploy Token42Profile (Soulbound)
-    const identityPrecompile = m.getParameter("identityPrecompile", "0x0000000000000000000000000000000000000901");
-    const profile = m.contract("Token42Profile", [identityPrecompile]);
+    const profile = m.contract("Token42Profile", [identityAddress]);
 
-    // For Token42Messaging, we need rUSD address and AI Agent address.
-    // Use parameters so they can be configured per-network.
-    const rUSD = m.getParameter("rUSD", "0x0000000000000000000000000000000000000000");
-    const aiAgent = m.getParameter("aiAgent", "0x0000000000000000000000000000000000000000");
+    // Deploy Token42Messaging
+    const messaging = m.contract("Token42Messaging", [rUSDAddress, profile, aiAgent]);
 
-    const messaging = m.contract("Token42Messaging", [rUSD, profile, aiAgent]);
-
+    if (USE_MOCKS) {
+        return { profile, messaging, identityAddress, rUSDAddress };
+    }
     return { profile, messaging };
 });

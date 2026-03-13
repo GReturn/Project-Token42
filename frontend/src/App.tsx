@@ -4,8 +4,8 @@ import { ethers } from 'ethers';
 import { uploadToIPFS } from './utils/storage';
 
 // Contract Addresses (Paseo Asset Hub - PolkaVM)
-const PROFILE_CONTRACT_ADDRESS = "0xf7cA780f3ad9173108fCd90dF0c156E1715EFf46";
-const MESSAGING_CONTRACT_ADDRESS = "0x5f963C7599990c941217E1d0D317F601dC1794CE";
+const PROFILE_CONTRACT_ADDRESS = "0xD7dD2d357A377beb0bbF89BfF0f0b36549e8476B";
+const MESSAGING_CONTRACT_ADDRESS = "0x5f9b5ccAa4B13e23E41E9d3F9018963bE76f1347";
 
 function App() {
   const [address, setAddress] = useState<string | null>(null);
