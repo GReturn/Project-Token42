@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { uploadToIPFS, fetchFromIPFS, UserProfile } from './utils/storage';
 import { toast, Toaster } from 'react-hot-toast';
 import Navbar from './components/Navbar';
+import Loading from './components/Loading';
 import GlassCard from './components/GlassCard';
 import StatusBadge from './components/StatusBadge';
 
@@ -52,6 +53,7 @@ function App() {
   const [chatMessages, setChatMessages] = useState([
     { text: "Hi! I saw our match score was high. Want to chat about decentralized systems?", sent: true }
   ]);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
     if (address) {
@@ -129,11 +131,14 @@ function App() {
 
   const connectWallet = async () => {
     if ((window as any).ethereum) {
+      setIsConnecting(true);
       try {
         const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
         setAddress(accounts[0]);
       } catch (error) {
         console.error("Connection failed:", error);
+      } finally {
+        setIsConnecting(false);
       }
     } else {
       alert("Please install SubWallet or MetaMask!");
@@ -260,6 +265,9 @@ function App() {
 
   return (
     <div className="App">
+      {(loading || isConnecting) && (
+        <Loading message={isConnecting ? "Connecting Wallet..." : "Processing Transaction..."} />
+      )}
       <Toaster 
         position="top-right"
         toastOptions={{
