@@ -1,9 +1,14 @@
 import { ethers } from 'ethers';
 import axios from 'axios';
+import express from 'express';
+import cors from 'cors';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 interface UserProfile {
     address: string;
-    personalityBio?: string; // Optional because we fetch it from CID
+    personalityBio?: string;
     personalityVector?: number[];
     cid: string;
 }
@@ -19,6 +24,11 @@ export class Token42Agent {
 
     constructor(privateKey: string) {
         this.agentWallet = new ethers.Wallet(privateKey);
+        console.log(`Agent initialized with address: ${this.agentWallet.address}`);
+    }
+
+    public getAddress(): string {
+        return this.agentWallet.address;
     }
 
     /**
@@ -32,15 +42,11 @@ export class Token42Agent {
             });
             return response.data.embedding;
         } catch (error) {
-            console.error("Embedding generation failed. Is Ollama running?");
-            // Fallback mock vector if Ollama is not available during dev
+            console.warn("Ollama connection failed, using mock embedding. Pull llama3 to fix!");
             return Array(4096).fill(0).map(() => Math.random());
         }
     }
 
-    /**
-     * @dev Simple Cosine Similarity implementation.
-     */
     public calculateSimilarity(v1: number[], v2: number[]): number {
         if (!v1 || !v2 || v1.length !== v2.length) return 0;
         let dotProduct = 0;
@@ -54,27 +60,16 @@ export class Token42Agent {
         return dotProduct / (Math.sqrt(mag1) * Math.sqrt(mag2));
     }
 
-    /**
-     * @dev Sign a "Match Intent" payload that the Smart Contract can verify.
-     */
     public async signMatch(userA: string, userB: string, score: number, nonce: number): Promise<string> {
-        // Score is expressed in basis points (0-10000) for the contract
         const scoreBps = Math.floor(score * 100);
-        
         const messageHash = ethers.solidityPackedKeccak256(
             ['address', 'address', 'uint256', 'uint256'],
             [userA, userB, scoreBps, nonce]
         );
-        
-        // EIP-191 signature (prefixed)
         return await this.agentWallet.signMessage(ethers.getBytes(messageHash));
     }
 
-    /**
-     * @dev Fetch JSON data from IPFS via a public gateway.
-     */
     public async fetchFromIPFS(cid: string): Promise<any> {
-        // We use the Pinata public gateway since it's generally faster and we are pinning with them
         const url = `https://gateway.pinata.cloud/ipfs/${cid}`;
         try {
             const response = await axios.get(url, { timeout: 10000 });
@@ -85,11 +80,7 @@ export class Token42Agent {
         }
     }
 
-    /**
-     * @dev Handle matching request using local inference.
-     */
     public async handleMatchRequest(currentUser: UserProfile, potentialMatches: UserProfile[], nonce: number) {
-        // Fetch bios if not provided
         if (!currentUser.personalityBio && currentUser.cid) {
             const data = await this.fetchFromIPFS(currentUser.cid);
             currentUser.personalityBio = data.bio;
@@ -98,7 +89,7 @@ export class Token42Agent {
         console.log(`Generating embedding for ${currentUser.address}...`);
         const userVector = await this.generateEmbedding(currentUser.personalityBio || "");
 
-        console.log(`Analyzing matches...`);
+        console.log(`Analyzing ${potentialMatches.length} matches...`);
         const resultPromises = potentialMatches.map(async (match) => {
             if (!match.personalityBio && match.cid) {
                 const data = await this.fetchFromIPFS(match.cid);
@@ -112,16 +103,11 @@ export class Token42Agent {
         });
 
         const results = await Promise.all(resultPromises);
-
-        // Sort by similarity
         results.sort((a, b) => b.score - a.score);
 
-        // Top match logic
         const topMatch = results[0];
-        console.log(`Top match: ${topMatch.address} with score ${(topMatch.score * 100).toFixed(2)}%`);
-
-        // Min score for signing (0.8 = 80%)
-        if (topMatch.score > 0.8) {
+        if (topMatch && topMatch.score > 0.8) {
+            console.log(`Top match: ${topMatch.address} (${(topMatch.score * 100).toFixed(2)}%)`);
             const signature = await this.signMatch(currentUser.address, topMatch.address, topMatch.score, nonce);
             return {
                 matchAddress: topMatch.address,
@@ -134,29 +120,43 @@ export class Token42Agent {
     }
 }
 
-// Demo usage / Entry point
-async function main() {
-    // In production TEE, this key would be inside the enclave.
-    // For demo, we use a fixed "admin" key or random one.
-    const agent = new Token42Agent(ethers.Wallet.createRandom().privateKey);
+// Start Server
+const app = express();
+app.use(cors());
+app.use(express.json());
 
-    const userA: UserProfile = {
-        address: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
-        personalityBio: "I love hiking, decentralized finance, and drinking specialty coffee in Tokyo.",
-        cid: "QmX123"
-    };
+// For local testing, we use the environment variable
+const DEV_KEY = process.env.AGENT_PRIVATE_KEY;
 
-    const userB: UserProfile = {
-        address: "0x375ac89e80AE2169EC049B5780831A58bab5f7e3",
-        personalityBio: "Avid mountaineer and blockchain developer. I spend my weekends exploring the Alps.",
-        cid: "QmY456"
-    };
-
-    console.log("Starting local AI match analysis...");
-    const matchResult = await agent.handleMatchRequest(userA, [userB], 0);
-    console.log("Match Result:", matchResult);
+if (!DEV_KEY) {
+    console.error("❌ ERROR: AGENT_PRIVATE_KEY is not defined in .env file");
+    process.exit(1);
 }
 
-if (require.main === module) {
-    main().catch(console.error);
-}
+const agent = new Token42Agent(DEV_KEY);
+
+app.post('/match', async (req, res) => {
+    try {
+        const { currentUser, potentialMatches, nonce } = req.body;
+        const result = await agent.handleMatchRequest(currentUser, potentialMatches, nonce);
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/slash', async (req, res) => {
+    // This endpoint would normally be triggered by an AI moderation component 
+    // that analyzes chat logs. For testing, we expose it to the developer.
+    const { sender, recipient } = req.body;
+    console.log(`Moderation Alert: Slashing ${sender} for reported harassment against ${recipient}`);
+    // In a real TEE, the agent would call the contract directly. 
+    // Here we just acknowledge the intent.
+    res.json({ status: "Slashed", sender, recipient });
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+    console.log(`\n🚀 Token42 AI Agent Server running on http://localhost:${PORT}`);
+    console.log(`Agent Address: ${agent.getAddress()}`);
+});

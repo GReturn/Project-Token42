@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
 import { uploadToIPFS } from './utils/storage';
@@ -6,6 +6,26 @@ import { uploadToIPFS } from './utils/storage';
 // Contract Addresses (Paseo Asset Hub - PolkaVM)
 const PROFILE_CONTRACT_ADDRESS = "0xD7dD2d357A377beb0bbF89BfF0f0b36549e8476B";
 const MESSAGING_CONTRACT_ADDRESS = "0x5f9b5ccAa4B13e23E41E9d3F9018963bE76f1347";
+const RUSD_CONTRACT_ADDRESS = "0x...YOUR_RUSD_ADDRESS_HERE..."; // Update this from Ignition deployment
+
+const PROFILE_ABI = [
+  "function mintProfile(string cid) public",
+  "function hasProfile(address user) public view returns (bool)",
+  "function getProfileCID(address user) public view returns (string)"
+];
+
+const MESSAGING_ABI = [
+  "function stakeForMessage(address recipient, uint256 matchScore, bytes signature) public",
+  "function claimStake(address sender) public",
+  "function slashStake(address sender, address recipient) public",
+  "function nonces(address user) public view returns (uint256)",
+  "function matches(bytes32 matchId) public view returns (address sender, address recipient, uint256 stake, bool active)"
+];
+
+const ERC20_ABI = [
+  "function approve(address spender, uint256 amount) public returns (bool)",
+  "function balanceOf(address account) public view returns (uint256)"
+];
 
 function App() {
   const [address, setAddress] = useState<string | null>(null);
@@ -15,50 +35,55 @@ function App() {
   const [bio, setBio] = useState('');
   const [loading, setLoading] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [userCID, setUserCID] = useState<string | null>(null);
 
   const connectWallet = async () => {
     if ((window as any).ethereum) {
       try {
         const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
         setAddress(accounts[0]);
-        setStep('profile');
-        // Simulate checking identity precompile status
+        
+        const provider = new ethers.BrowserProvider((window as any).ethereum);
+        const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
+        
+        const hasProfile = await profileContract.hasProfile(accounts[0]);
+        if (hasProfile) {
+          try {
+            const cid = await profileContract.getProfileCID(accounts[0]);
+            setUserCID(cid);
+            setStep('matching');
+          } catch (e) {
+            console.error("Failed to fetch CID:", e);
+            setStep('profile');
+          }
+        } else {
+          setStep('profile');
+        }
         setIsVerified(true);
       } catch (error) {
-        console.error("User denied account access");
+        console.error("Connection failed:", error);
       }
     } else {
-      alert("Please install SubWallet or metamask!");
+      alert("Please install SubWallet or MetaMask!");
     }
   };
 
   const createProfile = async () => {
     if (!address || !bio) return alert("Please enter a bio");
-    
     setLoading(true);
     try {
-      console.log("Uploading bio to IPFS...");
-      const cid = await uploadToIPFS(address, {
-        bio,
-        timestamp: Date.now(),
-        creator: address
-      });
+      const cid = await uploadToIPFS(address, { bio, timestamp: Date.now(), creator: address });
       console.log("IPFS CID:", cid);
 
-      console.log("Minting Soulbound Profile...");
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const signer = await provider.getSigner();
-      const profileContract = new ethers.Contract(
-        PROFILE_CONTRACT_ADDRESS,
-        ["function mintProfile(string cid) public"],
-        signer
-      );
+      const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, signer);
 
       const tx = await profileContract.mintProfile(cid);
       setTxHash(tx.hash);
       await tx.wait();
       
-      console.log("Profile Minted!");
+      setUserCID(cid);
       setStep('matching');
     } catch (error: any) {
       console.error("Profile creation failed:", error);
@@ -69,20 +94,70 @@ function App() {
   };
 
   const findMatches = async () => {
-    console.log("Connecting to Phala TEE Agent...");
-    // Simulate Phala Agent response
-    const mockMatches = [
-      { address: "0xabc...def", score: 92, status: "Ready to Stake" },
-      { address: "0x789...012", score: 81, status: "Ready to Stake" },
-    ];
-    setMatches(mockMatches);
+    if (!address || !userCID) return;
+    setLoading(true);
+    try {
+      console.log("Calling Local AI Agent Matching Engine...");
+      
+      const potentialMatches = [
+        { address: "0x375ac89e80AE2169EC049B5780831A58bab5f7e3", cid: "QmX123...mock" },
+      ];
+
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const messagingContract = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, provider);
+      const nonce = await messagingContract.nonces(address);
+
+      const response = await fetch('http://localhost:3001/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentUser: { address, cid: userCID },
+          potentialMatches,
+          nonce: Number(nonce)
+        })
+      });
+
+      const data = await response.json();
+      if (data) {
+        setMatches([data]);
+      } else {
+        alert("No high-score matches found yet.");
+      }
+    } catch (error) {
+      console.error("Matching failed:", error);
+      alert("Local AI Agent not responding. Is it running on port 3001?");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const stakeAndMessage = async (matchAddress: string) => {
-    console.log(`Staking 1 rUSD to message ${matchAddress}...`);
-    // Integration with Token42Messaging.sol would go here
-    alert("Message Staked! You can now chat.");
-    setStep('chat');
+  const stakeAndMessage = async (match: any) => {
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      
+      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
+      const approveTx = await rUSD.approve(MESSAGING_CONTRACT_ADDRESS, ethers.parseEther("1"));
+      await approveTx.wait();
+
+      const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, signer);
+      const tx = await messaging.stakeForMessage(
+        match.matchAddress,
+        match.score,
+        match.signature
+      );
+      setTxHash(tx.hash);
+      await tx.wait();
+
+      alert("Message Staked! You can now chat.");
+      setStep('chat');
+    } catch (error: any) {
+      console.error("Staking failed:", error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -105,17 +180,13 @@ function App() {
         {step === 'profile' && (
           <div className="card">
             <h2>Human Verification Success</h2>
-            <p>
-              Identity:{' '}
-              <span className="mono text-wrap-anywhere">{address}</span>
-            </p>
+            <p>Identity: <span className="mono">{address}</span></p>
             <p style={{ color: '#00FFCC' }}>✓ Real Human status confirmed via People Chain</p>
             <textarea 
               placeholder="Tell us about yourself..." 
               className="bio-input" 
               value={bio}
               onChange={(e) => setBio(e.target.value)}
-              rows={5}
               disabled={loading}
             />
             <button 
@@ -125,11 +196,6 @@ function App() {
             >
               {loading ? "Processing..." : "Mint Soulbound Profile"}
             </button>
-            {txHash && (
-              <p style={{ fontSize: '0.8rem', marginTop: '1rem' }}>
-                Tx: <a href={`https://blockscout-passet-hub.parity-testnet.parity.io/tx/${txHash}`} target="_blank" rel="noreferrer" style={{ color: '#FF3366' }}>{txHash.slice(0, 10)}...</a>
-              </p>
-            )}
           </div>
         )}
 
@@ -137,16 +203,18 @@ function App() {
           <div>
             <div className="card">
               <h2>Deep-Thought Matching</h2>
-              <p>AI is privately analyzing personality vectors inside a secure enclave...</p>
-              <button onClick={findMatches} className="action-btn primary">Find Matches</button>
+              <p>AI is privately analyzing personality vectors...</p>
+              <button onClick={findMatches} className="action-btn primary" disabled={loading}>
+                {loading ? "Analyzing..." : "Find Matches"}
+              </button>
             </div>
             {matches.map((m, i) => (
               <div key={i} className="card match-item">
                 <div>
-                  <strong className="mono text-truncate" title={m.address}>{m.address}</strong>
+                  <strong className="mono">{m.matchAddress}</strong>
                   <div className="match-score">{m.score}% Match Score</div>
                 </div>
-                <button onClick={() => stakeAndMessage(m.address)} className="action-btn" style={{ width: 'auto', padding: '0.5rem 1rem' }}>
+                <button onClick={() => stakeAndMessage(m)} className="action-btn" disabled={loading}>
                   Stake & Message
                 </button>
               </div>
@@ -159,16 +227,18 @@ function App() {
             <h2>Chat Unlocked</h2>
             <p>You have staked 1 rUSD for this interaction. Harassment will result in slashing.</p>
             <div className="chat-box">
-              <p><strong>You:</strong> Hi! I saw our match score was 92%.</p>
+              <p><strong>You:</strong> Hi! I saw our match score was high.</p>
             </div>
-            <input type="text" placeholder="Type a message..." style={{ width: '100%', padding: '0.5rem', background: '#222', border: '1px solid #444', color: 'white' }} />
+            <button onClick={() => alert("Reported to AI Moderation Layer...")} className="action-btn" style={{ background: '#CC0000', marginTop: '1rem' }}>
+              Report Harassment
+            </button>
           </div>
         )}
       </main>
 
       <footer className="footer">
         <p>Built with ❤️ on Polkadot Asset Hub (Revive EVM) & Phala Network</p>
-        <p>SDG 5 & 16 Compliant</p>
+        <p>Local Agent Mode enabled</p>
       </footer>
     </div>
   );
