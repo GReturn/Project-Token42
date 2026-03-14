@@ -48,6 +48,7 @@ const ESCROW_ABI = [
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) public returns (bool)",
   "function balanceOf(address account) public view returns (uint256)",
+  "function allowance(address owner, address spender) public view returns (uint256)",
   "function faucet() public"
 ];
 
@@ -78,6 +79,7 @@ function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [initialProfile, setInitialProfile] = useState<UserProfile | null>(null);
   const [xmtpClient, setXmtpClient] = useState<Client | null>(null);
+  const [rusdBalance, setRusdBalance] = useState<string>("0");
   const [isXmtpLoading, setIsXmtpLoading] = useState(false);
   const [showRecipientBio, setShowRecipientBio] = useState(false);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
@@ -97,6 +99,7 @@ function App() {
       checkNetwork();
       checkProfileStatus();
       loadPersistedData();
+      updateBalance();
     }
   }, [address]);
 
@@ -264,44 +267,63 @@ function App() {
     try {
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
-      
-      const code = await provider.getCode(PROFILE_CONTRACT_ADDRESS);
-      if (code === "0x") {
-        console.error("Profile contract not found at address. Are you on the right network?");
-        setIsWrongNetwork(true);
-        return;
-      }
-
-      const hasProfile = await profileContract.hasProfile(address);
-      if (hasProfile) {
+      const exists = await profileContract.hasProfile(address);
+      if (exists) {
         const cid = await profileContract.getProfileCID(address);
         setUserCID(cid);
         const metadata = await fetchFromIPFS(cid);
         setProfile(metadata);
         setInitialProfile(metadata);
-        
-        // Resolve avatar if it exists
-        if (metadata.avatar) {
-          const url = await fetchImageFromIPFS(metadata.avatar);
-          setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
-        }
-
-        setStep('matching');
-      } else {
-        setStep('profile');
+        if (step === 'connect') setStep('matching');
       }
-      setIsVerified(true);
+    } catch (e) { console.error("Profile check failed", e); }
+  };
+
+  const updateBalance = async () => {
+    if (!address) return;
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, [
+        "function balanceOf(address) view returns (uint256)",
+        "function decimals() view returns (uint8)"
+      ], provider);
+      const balance = await rUSD.balanceOf(address);
+      setRusdBalance(ethers.formatEther(balance));
     } catch (e) {
-      console.error("Failed to check profile status:", e);
+      console.error("Failed to update rUSD balance:", e);
     }
   };
+
+  const getFaucetrUSD = async () => {
+    if (!address) return;
+    const toastId = toast.loading("Requesting test rUSD...");
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, [
+        "function faucet() public"
+      ], signer);
+      
+      const tx = await rUSD.faucet();
+      setTxHash(tx.hash);
+      await tx.wait();
+      
+      toast.success("100 rUSD received!", { id: toastId });
+      updateBalance();
+    } catch (error: any) {
+      console.error("Faucet failed:", error);
+      toast.error(`Faucet failed: ${error.message || "Unknown error"}`, { id: toastId });
+    } finally {
+      setLoading(false);
+    }  };
 
   const connectWallet = async () => {
     if ((window as any).ethereum) {
       setIsConnecting(true);
       try {
         const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
-        setAddress(accounts[0]);
+        setAddress(ethers.getAddress(accounts[0]));
       } catch (error) {
         console.error("Connection failed:", error);
       } finally {
@@ -664,8 +686,22 @@ function App() {
       const signer = await provider.getSigner();
       
       const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
-      const approveTx = await rUSD.approve(MESSAGING_CONTRACT_ADDRESS, ethers.parseEther("1"));
-      await approveTx.wait();
+      
+      // Check balance first
+      const balance = await rUSD.balanceOf(address);
+      const requiredStake = ethers.parseEther("1");
+      
+      if (balance < requiredStake) {
+        throw new Error("Insufficient rUSD balance. Use the 'Get rUSD' faucet in your profile.");
+      }
+
+      // Optimization: Check allowance before approving
+      const currentAllowance = await rUSD.allowance(address, MESSAGING_CONTRACT_ADDRESS);
+      if (currentAllowance < requiredStake) {
+        const approveTx = await rUSD.approve(MESSAGING_CONTRACT_ADDRESS, ethers.MaxUint256);
+        toast("Approving rUSD usage...");
+        await approveTx.wait();
+      }
 
       const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, signer);
       const tx = await messaging.stakeForMessage(
@@ -725,8 +761,14 @@ function App() {
       const signer = await provider.getSigner();
       
       const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
-      const approveTx = await rUSD.approve(MESSAGING_CONTRACT_ADDRESS, ethers.parseEther("5"));
-      await approveTx.wait();
+      const requiredReveal = ethers.parseEther("5");
+      
+      const currentAllowance = await rUSD.allowance(address, MESSAGING_CONTRACT_ADDRESS);
+      if (currentAllowance < requiredReveal) {
+        const approveTx = await rUSD.approve(MESSAGING_CONTRACT_ADDRESS, ethers.MaxUint256);
+        toast("Approving rUSD usage...");
+        await approveTx.wait();
+      }
 
       const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, signer);
       const tx = await messaging.burnForReveal(recipient);
@@ -743,33 +785,21 @@ function App() {
     }
   };
 
-  const getFaucetTokens = async () => {
-    setLoading(true);
-    try {
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
-      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
-      const tx = await rUSD.faucet();
-      toast("Faucet transaction sent...");
-      await tx.wait();
-      toast.success("100 rUSD added to your wallet! 💸");
-    } catch (error: any) {
-      console.error("Faucet failed:", error);
-      toast.error(`Faucet failed: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const proposeDate = async (partner: string) => {
     setLoading(true);
     try {
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const signer = await provider.getSigner();
-      
-      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
-      const approveTx = await rUSD.approve(ESCROW_CONTRACT_ADDRESS, ethers.parseEther("10"));
-      await approveTx.wait();
+            const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
+      const requiredDateStake = ethers.parseEther("10");
+
+      const currentAllowance = await rUSD.allowance(address, ESCROW_CONTRACT_ADDRESS);
+      if (currentAllowance < requiredDateStake) {
+        const approveTx = await rUSD.approve(ESCROW_CONTRACT_ADDRESS, ethers.MaxUint256);
+        toast("Approving rUSD usage...");
+        await approveTx.wait();
+      }
 
       const escrow = new ethers.Contract(ESCROW_CONTRACT_ADDRESS, ESCROW_ABI, signer);
       const tx = await escrow.proposeDate(partner);
@@ -881,8 +911,8 @@ function App() {
     if (xmtpClient) {
       console.log("Preparing to send XMTP V3 message to:", activeChat);
       try {
-        // Lowercase address to be safe with V3 lookups
-        const conversation = await xmtpClient.conversations.createDm(activeChat.toLowerCase());
+        // Use checksummed address for V3 lookups to avoid "invalid hex" errors
+        const conversation = await xmtpClient.conversations.createDm(ethers.getAddress(activeChat));
         const encoded = await encodeText(messageText);
         await conversation.send(encoded);
         console.log("✅ Message sent via XMTP V3 (MLS)");
@@ -1029,6 +1059,31 @@ function App() {
                 </p>
               </div>
               
+              <div className="profile-stats" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
+                <div className="stat-item">
+                  <span className="stat-value" style={{ display: 'block', fontSize: '1.2rem', fontWeight: 'bold' }}>{matches.length}</span>
+                  <span className="stat-label" style={{ fontSize: '0.8rem', opacity: 0.7 }}>Matches</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-value" style={{ display: 'block', fontSize: '1.2rem', fontWeight: 'bold' }}>{Object.keys(chatMessages).length}</span>
+                  <span className="stat-label" style={{ fontSize: '0.8rem', opacity: 0.7 }}>Chats</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-value" style={{ display: 'block', fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>{parseFloat(rusdBalance).toFixed(2)}</span>
+                  <span className="stat-label" style={{ fontSize: '0.8rem', opacity: 0.7 }}>rUSD</span>
+                </div>
+                <div style={{ marginLeft: 'auto' }}>
+                  <button 
+                    className="text-btn" 
+                    onClick={getFaucetrUSD} 
+                    disabled={loading}
+                    style={{ fontSize: '0.75rem', padding: '4px 8px', border: '1px solid var(--accent)', borderRadius: '4px' }}
+                  >
+                    {loading ? "..." : "🪙 Faucet"}
+                  </button>
+                </div>
+              </div>
+
               <div className="input-group">
                 <label className="input-label">Profile Photo</label>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -1135,12 +1190,6 @@ function App() {
                 )}
               </button>
 
-              <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', textAlign: 'center' }}>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Need test tokens for staking?</p>
-                <button className="text-btn" onClick={getFaucetTokens} disabled={loading} style={{ fontSize: '0.9rem' }}>
-                    Get 100 rUSD (Faucet) 💸
-                </button>
-              </div>
             </GlassCard>
 
             <aside>
