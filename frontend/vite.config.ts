@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import topLevelAwait from 'vite-plugin-top-level-await'
+import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -16,6 +17,14 @@ export default defineConfig({
     }),
     topLevelAwait(),
   ],
+  server: {
+    fs: {
+      // Allow serving files from root node_modules (for workspace-hoisted packages like viem, ox, abitype)
+      allow: [
+        path.resolve(__dirname, '..'),
+      ],
+    },
+  },
   define: {
     global: 'globalThis',
   },
