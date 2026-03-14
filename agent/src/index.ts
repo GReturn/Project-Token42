@@ -147,19 +147,17 @@ export class Token42Agent {
     /**
      * @dev Send a real-time notification via XMTP.
      */
-    public async sendXMTPNotification(recipient: string, messageText: string) {
-        if (!this.xmtpClient) {
-            console.warn("⚠️ XMTP client not initialized. Skipping notification.");
-            return;
-        }
-
+    private async sendXMTPNotification(recipientAddress: string, message: string) {
         try {
-            // MLS groups create
-            const group = await this.xmtpClient.conversations.createGroup([recipient]);
-            await group.send(encodeText(messageText)); // V3 expects an EncodedContent
-            console.log(`✅ XMTP V3 notification sent to ${recipient}`);
+            if (!this.xmtpClient) return;
+            const cleanAddr = recipientAddress.toLowerCase();
+            const conversation = await this.xmtpClient.conversations.createDm(cleanAddr);
+            const encoded = await encodeText(message);
+            await conversation.send(encoded);
+            console.log(`✅ XMTP V3 notification sent to ${cleanAddr}`);
         } catch (error) {
-            console.error(`❌ Failed to send XMTP V3 notification to ${recipient}:`, error);
+            // This is often a transient network error on Dev network
+            console.warn(`⚠️ Match response was successful, but background XMTP notification to ${recipientAddress} failed. This won't affect the user's ability to chat.`);
         }
     }
 
