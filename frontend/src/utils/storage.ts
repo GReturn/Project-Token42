@@ -61,19 +61,72 @@ export async function uploadToIPFS(address: string, data: UserProfile): Promise<
 }
 
 /**
- * Fetches profile metadata from IPFS.
+ * Fetches profile metadata from IPFS with local caching.
  * @param cid The CID of the content to fetch.
  * @returns The UserProfile object.
  */
 export async function fetchFromIPFS(cid: string): Promise<UserProfile> {
+  // Check localStorage cache first
+  const cacheKey = `ipfs_json_${cid}`;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (e) {
+      console.warn("Failed to parse cached IPFS metadata, fetching fresh...");
+    }
+  }
+
   try {
     const response = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch from IPFS: ${response.status}`);
     }
-    return await response.json();
+    const data = await response.json();
+    
+    // Save to cache
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+    
+    return data;
   } catch (error) {
     console.error("IPFS Fetch Failed:", error);
     throw new Error('Failed to fetch profile from IPFS');
+  }
+}
+
+/**
+ * Fetches an image from IPFS with local caching using Data URLs.
+ * @param cid The CID of the image to fetch.
+ * @returns A promise resolving to the Data URL of the image.
+ */
+export async function fetchImageFromIPFS(cid: string): Promise<string> {
+  const cacheKey = `ipfs_img_${cid}`;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached && !cached.startsWith('blob:')) return cached;
+
+
+  try {
+    const response = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
+    if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
+    
+    const rawBlob = await response.blob();
+    
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        try {
+          localStorage.setItem(cacheKey, base64data);
+        } catch (e) {
+          console.warn("Storage full, could not cache image");
+        }
+        resolve(base64data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(rawBlob);
+    });
+  } catch (error) {
+    console.error("IPFS Image Fetch Failed:", error);
+    return `https://gateway.pinata.cloud/ipfs/${cid}`; // Fallback to direct URL
   }
 }
