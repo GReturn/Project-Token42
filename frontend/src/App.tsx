@@ -507,6 +507,7 @@ function App() {
   };
 
   const isLanding = step === 'connect';
+  const isProfileComplete = !!(profile.name && profile.bio && profile.avatar);
 
       const hasChanges = !userCID || (
     profile.name !== initialProfile?.name || 
@@ -777,14 +778,25 @@ function App() {
                   <h2 style={{ margin: 0, fontWeight: 700, letterSpacing: '-0.5px' }}>Discovery</h2>
                   <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>AI-guided matches based on personality vectors</p>
                 </div>
-                <button 
-                  onClick={findMatches} 
-                  className="primary-btn" 
-                  style={{ width: 'auto', padding: '0.7rem 1.5rem' }}
-                  disabled={loading}
-                >
-                  {loading ? <span className="loading-pulse">Scanning...</span> : "Find Matches"}
-                </button>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  {!isProfileComplete && (
+                    <button 
+                      className="lock-info-btn" 
+                      onClick={() => setIsMatchLockModalOpen(true)}
+                      title="Profile Incomplete"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </button>
+                  )}
+                  <button 
+                    onClick={findMatches} 
+                    className="primary-btn" 
+                    style={{ width: 'auto', padding: '0.7rem 1.5rem' }}
+                    disabled={loading || !isProfileComplete}
+                  >
+                    {loading ? <span className="loading-pulse">Scanning...</span> : "Find Matches"}
+                  </button>
+                </div>
               </div>
 
               {matches.length === 0 && !loading && (
@@ -818,7 +830,7 @@ function App() {
                       </div>
                       <div className="match-info">
                         <h3>{m.matchAddress.slice(0, 10)}...{m.matchAddress.slice(-6)}</h3>
-                        <p>{m.matchBio || "Passionate about decentralized systems and AI. Looking for someone to build the future with."}</p>
+                        <p>{m.matchBio || "Matching personality profile..."}</p>
                       </div>
                       <div className="match-score-ring">
                         <svg viewBox="0 0 36 36">
@@ -1047,6 +1059,59 @@ function App() {
           onAcceptDate={acceptDate}
           onSubmitProof={submitDateProof}
         />
+      )}
+      {isMatchLockModalOpen && (
+        <div className="modal-overlay">
+          <GlassCard className="modal-content animate-in" style={{ textAlign: 'center', padding: '2.5rem' }}>
+            <div style={{ 
+              width: '64px', 
+              height: '64px', 
+              background: 'rgba(255, 51, 102, 0.1)', 
+              borderRadius: '50%', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              margin: '0 auto 1.5rem',
+              color: 'var(--primary)'
+            }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <h2 style={{ marginBottom: '0.5rem' }}>Discovery Locked</h2>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', lineHeight: 1.6 }}>
+              Our AI Matchmaker needs to know you first! Complete the following in the <strong>Profile</strong> tab to unlock discovery:
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left', marginBottom: '2.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ color: profile.name ? 'var(--accent)' : 'var(--text-muted)' }}>{profile.name ? '✅' : '🔴'}</span>
+                <span style={{ opacity: profile.name ? 1 : 0.6 }}>Display Name</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ color: profile.bio ? 'var(--accent)' : 'var(--text-muted)' }}>{profile.bio ? '✅' : '🔴'}</span>
+                <span style={{ opacity: profile.bio ? 1 : 0.6 }}>Bio Description</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ color: profile.avatar ? 'var(--accent)' : 'var(--text-muted)' }}>{profile.avatar ? '✅' : '🔴'}</span>
+                <span style={{ opacity: profile.avatar ? 1 : 0.6 }}>Profile Photo</span>
+              </div>
+            </div>
+            <button 
+              className="primary-btn" 
+              onClick={() => {
+                setIsMatchLockModalOpen(false);
+                setStep('profile');
+              }}
+            >
+              Go to Profile →
+            </button>
+            <button 
+              className="text-btn" 
+              style={{ marginTop: '1rem', color: 'var(--text-muted)' }}
+              onClick={() => setIsMatchLockModalOpen(false)}
+            >
+              Close
+            </button>
+          </GlassCard>
+        </div>
       )}
     </div>
   );
