@@ -54,9 +54,18 @@ async function main() {
         const messagingAddress = await messaging.getAddress();
         console.log("Token42Messaging deployed to:", messagingAddress);
 
+        console.log("Deploying Token42Escrow...");
+        const Token42Escrow = await hre.ethers.getContractFactory("Token42Escrow");
+        const escrow = await Token42Escrow.deploy(rUSDAddress, profileAddress, gasOverrides);
+        await escrow.waitForDeployment();
+        const escrowAddress = await escrow.getAddress();
+        console.log("Token42Escrow deployed to:", escrowAddress);
+
         console.log("\n=== Deployment Complete ===");
         console.log("Token42Profile:", profileAddress);
         console.log("Token42Messaging:", messagingAddress);
+        console.log("Token42Escrow:", escrowAddress);
+        console.log("MockRUSD:", rUSDAddress);
     }
     
     main().catch((error) => {

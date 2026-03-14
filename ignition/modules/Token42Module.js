@@ -25,8 +25,11 @@ module.exports = buildModule("Token42Module", (m) => {
     // Deploy Token42Messaging
     const messaging = m.contract("Token42Messaging", [rUSDAddress, profile, aiAgent]);
 
+    // Deploy Token42Escrow
+    const escrow = m.contract("Token42Escrow", [rUSDAddress, profile]);
+
     if (USE_MOCKS) {
-        return { profile, messaging, identityAddress, rUSDAddress };
+        return { profile, messaging, escrow, identityAddress, rUSDAddress };
     }
-    return { profile, messaging };
+    return { profile, messaging, escrow };
 });

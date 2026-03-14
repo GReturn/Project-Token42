@@ -13,10 +13,10 @@ import { compressImage, getCroppedImg } from './utils/images';
 import Cropper from 'react-easy-crop';
 
 // Contract Addresses (Paseo Asset Hub - PolkaVM)
-const PROFILE_CONTRACT_ADDRESS = "0xD7dD2d357A377beb0bbF89BfF0f0b36549e8476B";
-const MESSAGING_CONTRACT_ADDRESS = "0x5f9b5ccAa4B13e23E41E9d3F9018963bE76f1347";
-const ESCROW_CONTRACT_ADDRESS = "0x...YOUR_ESCROW_ADDRESS_HERE..."; // Replace with deployed address if needed
-const RUSD_CONTRACT_ADDRESS = "0x454b00B17f45fe3Fa0d7B456742a1d48726FF593";
+const PROFILE_CONTRACT_ADDRESS = "0x6B9EB0Aaa10bC763C1d6c23C0dF1D59cAc458a44";
+const MESSAGING_CONTRACT_ADDRESS = "0x0746242E447fAec6E2eAB20184631E65bf33be0d";
+const ESCROW_CONTRACT_ADDRESS = "0xA4094E6BfEf287E739FAfaE575cE338754cd8D1D";
+const RUSD_CONTRACT_ADDRESS = "0x6b6cFE04Ceba0d1B5a8297f4Aa20F1c831079Ec5";
 
 const PROFILE_ABI = [
   "function mintProfile(string cid) public",
@@ -45,7 +45,8 @@ const ESCROW_ABI = [
 
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) public returns (bool)",
-  "function balanceOf(address account) public view returns (uint256)"
+  "function balanceOf(address account) public view returns (uint256)",
+  "function faucet() public"
 ];
 
 function App() {
@@ -514,6 +515,24 @@ function App() {
     }
   };
 
+  const getFaucetTokens = async () => {
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
+      const tx = await rUSD.faucet();
+      toast("Faucet transaction sent...");
+      await tx.wait();
+      toast.success("100 rUSD added to your wallet! 💸");
+    } catch (error: any) {
+      console.error("Faucet failed:", error);
+      toast.error(`Faucet failed: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const proposeDate = async (partner: string) => {
     setLoading(true);
     try {
@@ -869,6 +888,13 @@ function App() {
                   userCID ? (hasChanges ? "Update Profile →" : "No Changes Detected") : "Mint Soulbound Profile →"
                 )}
               </button>
+
+              <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', textAlign: 'center' }}>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Need test tokens for staking?</p>
+                <button className="text-btn" onClick={getFaucetTokens} disabled={loading} style={{ fontSize: '0.9rem' }}>
+                    Get 100 rUSD (Faucet) 💸
+                </button>
+              </div>
             </GlassCard>
 
             <aside>
