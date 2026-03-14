@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
+import { Client, encodeText, createBackend, getInboxIdForIdentifier } from '@xmtp/browser-sdk';
 import { uploadToIPFS, fetchFromIPFS, fetchImageFromIPFS, UserProfile } from './utils/storage';
 import { STORAGE_CONFIG } from './config/storage';
 import { toast, Toaster } from 'react-hot-toast';
@@ -13,10 +14,10 @@ import { compressImage, getCroppedImg } from './utils/images';
 import Cropper from 'react-easy-crop';
 
 // Contract Addresses (Paseo Asset Hub - PolkaVM)
-const PROFILE_CONTRACT_ADDRESS = "0x6B9EB0Aaa10bC763C1d6c23C0dF1D59cAc458a44";
-const MESSAGING_CONTRACT_ADDRESS = "0x0746242E447fAec6E2eAB20184631E65bf33be0d";
-const ESCROW_CONTRACT_ADDRESS = "0xA4094E6BfEf287E739FAfaE575cE338754cd8D1D";
-const RUSD_CONTRACT_ADDRESS = "0x6b6cFE04Ceba0d1B5a8297f4Aa20F1c831079Ec5";
+const PROFILE_CONTRACT_ADDRESS = "0x9B9f7569A535Cd2B66EC9B2F5509F5e688Ba92B5";
+const MESSAGING_CONTRACT_ADDRESS = "0x8B8d13a7f678FA8f6793290Ee9e46302Be427453";
+const ESCROW_CONTRACT_ADDRESS = "0xb6B64176CC8a8350AB84D466CD4bf111C3A6E7a5";
+const RUSD_CONTRACT_ADDRESS = "0xFE4eae5d84412B70b1f04b3F78351a654D28Da25";
 
 const PROFILE_ABI = [
   "function mintProfile(string cid) public",
@@ -33,7 +34,8 @@ const MESSAGING_ABI = [
   "function burnForReveal(address recipient) public",
   "function nonces(address user) public view returns (uint256)",
   "function matches(bytes32 matchId) public view returns (address sender, address recipient, uint256 stake, bool active)",
-  "event RevealPurchased(address indexed sender, address indexed recipient, uint256 amount)"
+  "event RevealPurchased(address indexed sender, address indexed recipient, uint256 amount)",
+  "event MessageStaked(address indexed sender, address indexed recipient, uint256 amount, uint256 nonce)"
 ];
 
 const ESCROW_ABI = [
@@ -46,6 +48,7 @@ const ESCROW_ABI = [
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) public returns (bool)",
   "function balanceOf(address account) public view returns (uint256)",
+  "function allowance(address owner, address spender) public view returns (uint256)",
   "function faucet() public"
 ];
 
@@ -75,15 +78,21 @@ function App() {
   const [chatMessages, setChatMessages] = useState<Record<string, { text: string; sent: boolean }[]>>({});
   const [isConnecting, setIsConnecting] = useState(false);
   const [initialProfile, setInitialProfile] = useState<UserProfile | null>(null);
+  const [xmtpClient, setXmtpClient] = useState<Client | null>(null);
+  const [rusdBalance, setRusdBalance] = useState<string>("0");
+  const [isXmtpLoading, setIsXmtpLoading] = useState(false);
   const [showRecipientBio, setShowRecipientBio] = useState(false);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  const [hasActiveStake, setHasActiveStake] = useState(false);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
   const [pendingAvatarBlob, setPendingAvatarBlob] = useState<Blob | null>(null);
   const [localAvatarPreview, setLocalAvatarPreview] = useState<string | null>(null);
   const [cachedAvatarUrls, setCachedAvatarUrls] = useState<Record<string, string>>({});
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const isInitializingXmtp = useRef(false);
+  const topicToAddress = useRef<Record<string, string>>({});
 
   const MAX_CHAT_CHARS = 500;
 
@@ -92,6 +101,7 @@ function App() {
       checkNetwork();
       checkProfileStatus();
       loadPersistedData();
+      updateBalance();
     }
   }, [address]);
 
@@ -156,6 +166,85 @@ function App() {
         });
       } catch (e) { console.error("Failed to load saved chats", e); }
     }
+
+    // Recover on-chain stakes
+    await recoverLegacyStakes();
+  };
+
+  const recoverLegacyStakes = async () => {
+    if (!address) return;
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, provider);
+      
+      // Get stakes we SENT
+      // Fetch all MessageStaked events for the last 5000 blocks and filter locally
+      // This avoids RPC compatibility issues with 'null' wildcards in topic filters.
+      const filter = messaging.filters.MessageStaked();
+      const recentEvents = await messaging.queryFilter(filter, -5000);
+
+      const allEvents = recentEvents.filter((event: any) => {
+        if (!event.args) return false;
+        const sender = event.args.sender.toLowerCase();
+        const recipient = event.args.recipient.toLowerCase();
+        const myAddr = address.toLowerCase();
+        return sender === myAddr || recipient === myAddr;
+      });
+
+      if (allEvents.length > 0) {
+        console.log(`Found ${allEvents.length} relevant on-chain stakes.`);
+        const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
+        
+        const newChats: Record<string, any[]> = { ...chatMessages };
+        let changed = false;
+
+        for (const event of allEvents) {
+          const log = event as any;
+          if (log.args) {
+            const sender = log.args.sender;
+            const recipient = log.args.recipient;
+            const partner = sender.toLowerCase() === address.toLowerCase() ? recipient.toLowerCase() : sender.toLowerCase();
+            
+            // Note: chatMessages keys are generally stored lowercase for easier matching, 
+            // but the app uses mixed case in some places. Let's try to normalize or check both.
+            const existingKeys = Object.keys(newChats).map(k => k.toLowerCase());
+            
+            if (!existingKeys.includes(partner)) {
+              console.log("Restoring session for partner:", partner);
+              const checksummedPartner = ethers.getAddress(partner);
+              newChats[checksummedPartner] = [];
+              changed = true;
+              
+              try {
+                const cid = await profileContract.getProfileCID(checksummedPartner);
+                if (cid) {
+                  const metadata = await fetchFromIPFS(cid);
+                  if (metadata.avatar) {
+                    const url = await fetchImageFromIPFS(metadata.avatar);
+                    setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
+                  }
+                  setMatches(prev => {
+                    if (prev.some(m => m.matchAddress.toLowerCase() === partner)) return prev;
+                    return [...prev, {
+                      matchAddress: checksummedPartner,
+                      matchBio: metadata.bio,
+                      matchName: metadata.name,
+                      avatar: metadata.avatar,
+                      score: 10000 
+                    }];
+                  });
+                }
+              } catch (e) {
+                console.warn("Match metadata restoration failed for", partner);
+              }
+            }
+          }
+        }
+        if (changed) setChatMessages(newChats);
+      }
+    } catch (e) {
+      console.error("Legacy stake recovery failed:", e);
+    }
   };
 
   const checkNetwork = async () => {
@@ -200,44 +289,63 @@ function App() {
     try {
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
-      
-      const code = await provider.getCode(PROFILE_CONTRACT_ADDRESS);
-      if (code === "0x") {
-        console.error("Profile contract not found at address. Are you on the right network?");
-        setIsWrongNetwork(true);
-        return;
-      }
-
-      const hasProfile = await profileContract.hasProfile(address);
-      if (hasProfile) {
+      const exists = await profileContract.hasProfile(address);
+      if (exists) {
         const cid = await profileContract.getProfileCID(address);
         setUserCID(cid);
         const metadata = await fetchFromIPFS(cid);
         setProfile(metadata);
         setInitialProfile(metadata);
-        
-        // Resolve avatar if it exists
-        if (metadata.avatar) {
-          const url = await fetchImageFromIPFS(metadata.avatar);
-          setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
-        }
-
-        setStep('matching');
-      } else {
-        setStep('profile');
+        if (step === 'connect') setStep('matching');
       }
-      setIsVerified(true);
+    } catch (e) { console.error("Profile check failed", e); }
+  };
+
+  const updateBalance = async () => {
+    if (!address) return;
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, [
+        "function balanceOf(address) view returns (uint256)",
+        "function decimals() view returns (uint8)"
+      ], provider);
+      const balance = await rUSD.balanceOf(address);
+      setRusdBalance(ethers.formatEther(balance));
     } catch (e) {
-      console.error("Failed to check profile status:", e);
+      console.error("Failed to update rUSD balance:", e);
     }
   };
+
+  const getFaucetrUSD = async () => {
+    if (!address) return;
+    const toastId = toast.loading("Requesting test rUSD...");
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, [
+        "function faucet() public"
+      ], signer);
+      
+      const tx = await rUSD.faucet();
+      setTxHash(tx.hash);
+      await tx.wait();
+      
+      toast.success("100 rUSD received!", { id: toastId });
+      updateBalance();
+    } catch (error: any) {
+      console.error("Faucet failed:", error);
+      toast.error(`Faucet failed: ${error.message || "Unknown error"}`, { id: toastId });
+    } finally {
+      setLoading(false);
+    }  };
 
   const connectWallet = async () => {
     if ((window as any).ethereum) {
       setIsConnecting(true);
       try {
         const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
-        setAddress(accounts[0]);
+        setAddress(ethers.getAddress(accounts[0]));
       } catch (error) {
         console.error("Connection failed:", error);
       } finally {
@@ -245,6 +353,333 @@ function App() {
       }
     } else {
       alert("Please install SubWallet or MetaMask!");
+    }
+  };
+
+  const initXMTP = async () => {
+    if (!address || xmtpClient || isInitializingXmtp.current) return;
+    setIsXmtpLoading(true);
+    isInitializingXmtp.current = true;
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      
+      console.log("Initializing XMTP V3 client with persistent DB...");
+      
+      // Wrap Ethers signer for XMTP V3
+      const xmtpSigner = {
+        type: 'EOA' as const,
+        getIdentifier: async () => ({
+          identifier: await signer.getAddress(),
+          identifierKind: 0 as any // 0 = Ethereum/EVM
+        }),
+        signMessage: async (message: string) => {
+          const sig = await signer.signMessage(message);
+          return ethers.getBytes(sig);
+        }
+      };
+
+      const client = await Client.create(xmtpSigner as any, { 
+        env: "dev",
+        dbPath: `token42-${address.toLowerCase()}.db`
+      } as any);
+      
+      setXmtpClient(client);
+      console.log("✅ XMTP V3 initialized. Inbox ID:", client.inboxId);
+      toast.success("Real-time messaging active!");
+    } catch (error: any) {
+      console.error("XMTP V3 initialization failed:", error);
+      if (error.message?.includes("Access Handles cannot be created")) {
+        toast.error("Storage locked. Please close other browser tabs.", { duration: 5000 });
+      } else if (error.message?.includes("already registered 10/10 installations")) {
+        toast.error("Session limit reached. Use 'Rescue XMTP' in Profile.", { duration: 6000 });
+      } else {
+        toast.error("Failed to enable real-time messaging");
+      }
+    } finally {
+      setIsXmtpLoading(false);
+      isInitializingXmtp.current = false;
+    }
+  };
+
+  const revokeXmtpInstallations = async () => {
+    if (!address) return;
+    const toastId = toast.loading("Performing Emergency Rescue (v2)...");
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const walletAddress = await signer.getAddress();
+
+      const xmtpSigner = {
+        type: 'EOA' as const,
+        getIdentifier: async () => ({
+          identifier: walletAddress,
+          identifierKind: 0 as any
+        }),
+        signMessage: async (message: string) => {
+          const sig = await signer.signMessage(message);
+          return ethers.getBytes(sig);
+        }
+      };
+
+      // v2 logic: use static methods that don't need a local DB instance
+      console.log("🚀 Starting Static Revocation Flow...");
+      const backend = await createBackend({ env: "dev" });
+      
+      const inboxId = await getInboxIdForIdentifier(backend, {
+        identifier: walletAddress,
+        identifierKind: 0
+      });
+
+      if (!inboxId) {
+        toast.error("No XMTP identity found on network.", { id: toastId });
+        return;
+      }
+
+      console.log("Found Inbox ID:", inboxId);
+      const states = await Client.fetchInboxStates([inboxId], backend);
+      const inboxState = states[0];
+      
+      if (!inboxState || inboxState.installations.length === 0) {
+        toast.success("No active installations to revoke!", { id: toastId });
+        return;
+      }
+
+      const installationIds = inboxState.installations.map(inst => inst.bytes);
+      console.log(`Revoking ${installationIds.length} installations...`);
+
+      // Static revoke (requires signer + inboxId + array of IDs)
+      await Client.revokeInstallations(xmtpSigner as any, inboxId, installationIds, backend);
+      
+      toast.success("Network sessions cleared! Now click 'Clear XMTP DB' then refresh.", { id: toastId, duration: 8000 });
+    } catch (error: any) {
+      console.error("Rescue v2 failed:", error);
+      toast.error(`Force rescue failed: ${error.message}. Use 'Clear XMTP DB' and refresh first.`, { id: toastId, duration: 10000 });
+    }
+  };
+
+  // Deletes all XMTP .db files from the browser's OPFS (Origin Private File System).
+  // This is NOT localStorage — XMTP V3 stores encrypted DB files in a sandboxed filesystem.
+  // This only affects this site (localhost) and does not touch cookies or other sites.
+  const clearXmtpOpfs = async () => {
+    const toastId = toast.loading("Clearing XMTP local database...");
+    try {
+      const root = await navigator.storage.getDirectory();
+      const filesToDelete: string[] = [];
+
+      // List all entries in OPFS root
+      for await (const [name] of (root as any).entries()) {
+        if (name.endsWith('.db') || name.startsWith('token42-')) {
+          filesToDelete.push(name);
+        }
+      }
+
+      if (filesToDelete.length === 0) {
+        toast.success("No XMTP database files found.", { id: toastId });
+        return;
+      }
+
+      for (const name of filesToDelete) {
+        await root.removeEntry(name, { recursive: true });
+        console.log(`Deleted OPFS entry: ${name}`);
+      }
+
+      toast.success(`Cleared ${filesToDelete.length} XMTP DB file(s). Please refresh.`, { id: toastId });
+    } catch (error: any) {
+      console.error("OPFS clear failed:", error);
+      toast.error(`Failed to clear: ${error.message}`, { id: toastId });
+    }
+  };
+
+  // Trigger XMTP init when address is set
+  useEffect(() => {
+    if (address && !xmtpClient) {
+      initXMTP();
+    }
+  }, [address]);
+
+  // Stream XMTP messages
+  useEffect(() => {
+    if (!xmtpClient) return;
+
+    let isTerminated = false;
+    let syncInterval: any;
+
+    const startStreaming = async () => {
+      try {
+        await xmtpClient.conversations.sync();
+        console.log("✅ XMTP V3 initial sync complete.");
+
+        syncInterval = setInterval(async () => {
+          if (isTerminated) return;
+          try {
+            await xmtpClient.conversations.sync();
+          } catch (e) {
+            console.warn("Background sync failed:", e);
+          }
+        }, 15000);
+
+        // Helper to resolve sender address from a group topic
+        const resolveSender = async (groupOrTopic: any) => {
+          const topic = typeof groupOrTopic === 'string' ? groupOrTopic : groupOrTopic.topic;
+          if (topicToAddress.current[topic]) return topicToAddress.current[topic];
+          
+          try {
+            const group = typeof groupOrTopic === 'string' 
+              ? (await xmtpClient.conversations.list()).find((g: any) => g.topic === topic)
+              : groupOrTopic;
+
+            if (group) {
+              await group.sync();
+              const members = await group.members();
+              const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
+              if (otherMember && (otherMember as any).accountAddresses.length > 0) {
+                const addr = ethers.getAddress((otherMember as any).accountAddresses[0]);
+                topicToAddress.current[topic] = addr;
+                return addr;
+              }
+            }
+          } catch (e) {
+            console.error("Failed to resolve sender for topic:", topic, e);
+          }
+          return null;
+        };
+
+        // 1. Stream Conversations (to detect NEW DMs)
+        const runConvStream = async () => {
+          while (!isTerminated) {
+            try {
+              const convStream = await xmtpClient.conversations.stream();
+              console.log("Listening for new XMTP conversations...");
+              for await (const conversation of convStream) {
+                if (isTerminated) break;
+                console.log("New conversation detected:", conversation.id);
+                await conversation.sync();
+                
+                const members = await conversation.members();
+                const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
+                if (otherMember && (otherMember as any).accountAddresses.length > 0) {
+                  const partnerAddress = ethers.getAddress((otherMember as any).accountAddresses[0]);
+                  topicToAddress.current[conversation.topic] = partnerAddress;
+                  
+                  setChatMessages(prev => {
+                    if (prev[partnerAddress]) return prev;
+                    return { ...prev, [partnerAddress]: [] };
+                  });
+                  
+                  // Trigger profile resolution
+                  try {
+                    const provider = new ethers.BrowserProvider((window as any).ethereum);
+                    const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
+                    const cid = await profileContract.getProfileCID(partnerAddress);
+                    if (cid) {
+                      const metadata = await fetchFromIPFS(cid);
+                      setMatches(prev => {
+                        if (prev.some(m => m.matchAddress.toLowerCase() === partnerAddress.toLowerCase())) return prev;
+                        return [...prev, {
+                          matchAddress: partnerAddress,
+                          matchName: metadata.name,
+                          matchBio: metadata.bio,
+                          avatar: metadata.avatar,
+                          score: 10000
+                        }];
+                      });
+                    }
+                  } catch (e) { console.warn("Failed to resolve profile for new conversation:", partnerAddress); }
+                }
+              }
+            } catch (e) {
+              if (isTerminated) break;
+              console.warn("Conversation stream died, reconnecting...", e);
+              await new Promise(r => setTimeout(r, 3000));
+            }
+          }
+        };
+        runConvStream();
+
+        // 2. Stream Messages
+        while (!isTerminated) {
+          try {
+            const messageStream = await xmtpClient.conversations.streamAllMessages();
+            console.log("Listening for XMTP V3 messages...");
+            
+            for await (const message of messageStream) {
+              if (isTerminated) break;
+              if (message.senderInboxId === xmtpClient.inboxId) continue;
+
+              // Optimization: Resolve sender using the message's group if available
+              const senderAddress = await resolveSender((message as any).group || (message as any).topic || (message as any).groupTopic);
+              
+              if (senderAddress) {
+                // Robust Content Decoding
+                let text = "";
+                const content = message.content;
+
+                if (typeof content === 'string') {
+                  text = content;
+                } else if (content instanceof Uint8Array) {
+                  text = new TextDecoder().decode(content);
+                } else if (content && typeof content === 'object') {
+                  // Try to extract text from object (SDK decoded)
+                  text = (content as any).text || (content as any).body || JSON.stringify(content);
+                } else {
+                  console.warn("Received unknown message content type:", typeof content);
+                  continue;
+                }
+
+                console.log(`Received message from ${senderAddress}:`, text);
+
+                setChatMessages(prev => {
+                  const existing = prev[senderAddress] || [];
+                  // Prevent duplicates if optimistic update already added it
+                  if (existing.some((m: any) => m.text === text)) return prev;
+                  return {
+                    ...prev,
+                    [senderAddress]: [...existing, { text, sent: false }]
+                  };
+                });
+              }
+            }
+          } catch (e) {
+            if (isTerminated) break;
+            console.warn("Message stream died, reconnecting...", e);
+            await new Promise(r => setTimeout(r, 3000));
+          }
+        }
+      } catch (err) {
+        if (!isTerminated) console.error("XMTP Streaming error:", err);
+      }
+    };
+
+    startStreaming();
+
+    return () => {
+      isTerminated = true;
+      if (syncInterval) clearInterval(syncInterval);
+    };
+  }, [xmtpClient]);
+
+  // Check stake status when active chat changes
+  useEffect(() => {
+    if (activeChat && address) {
+      checkStakeStatus(activeChat);
+    }
+  }, [activeChat, address]);
+
+  const checkStakeStatus = async (partner: string) => {
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, provider);
+      
+      // matchId = keccak256(abi.encodePacked(sender, recipient))
+      // In this case, we are the recipient, and partner is the sender
+      const matchId = ethers.keccak256(ethers.solidityPacked(["address", "address"], [partner, address]));
+      const stakeInfo = await messaging.matches(matchId);
+      
+      setHasActiveStake(stakeInfo.active && stakeInfo.recipient.toLowerCase() === address?.toLowerCase());
+    } catch (e) {
+      console.error("Failed to check stake status:", e);
+      setHasActiveStake(false);
     }
   };
 
@@ -384,10 +819,15 @@ function App() {
               // We use a manual call to avoid the standard error handling if possible,
               // or just accept that the try-catch will handle it.
               const owner = await profileContract.ownerOf(tokenId);
-              if (owner.toLowerCase() !== address.toLowerCase()) {
-                  const cid = await profileContract.getProfileCID(owner);
-                  potentialMatches.push({ address: owner, cid });
-              }
+              const ownerAddr = owner.toLowerCase();
+                if (ownerAddr !== address.toLowerCase()) {
+                    // Filter out already staked recipients (those we already have a session with)
+                    const lowerChatKeys = Object.keys(chatMessages).map(k => k.toLowerCase());
+                    if (!lowerChatKeys.includes(ownerAddr)) {
+                        const cid = await profileContract.getProfileCID(owner);
+                        potentialMatches.push({ address: owner, cid });
+                    }
+                }
               consecutiveErrors = 0;
           } catch (e: any) {
               // Ignore "TokenDoesNotExist" or similar errors as they indicate end of list
@@ -455,12 +895,36 @@ function App() {
   const stakeAndMessage = async (match: any) => {
     setLoading(true);
     try {
+      const recipient = ethers.getAddress(match.matchAddress);
+      
+      // If already staked/connected, just go to chat
+      const lowerChatKeys = Object.keys(chatMessages).map(k => k.toLowerCase());
+      if (lowerChatKeys.includes(recipient.toLowerCase())) {
+        setActiveChat(recipient);
+        setStep('chat');
+        return;
+      }
+
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const signer = await provider.getSigner();
       
       const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
-      const approveTx = await rUSD.approve(MESSAGING_CONTRACT_ADDRESS, ethers.parseEther("1"));
-      await approveTx.wait();
+      
+      // Check balance first
+      const balance = await rUSD.balanceOf(address);
+      const requiredStake = ethers.parseEther("1");
+      
+      if (balance < requiredStake) {
+        throw new Error("Insufficient rUSD balance. Use the 'Get rUSD' faucet in your profile.");
+      }
+
+      // Optimization: Check allowance before approving
+      const currentAllowance = await rUSD.allowance(address, MESSAGING_CONTRACT_ADDRESS);
+      if (currentAllowance < requiredStake) {
+        const approveTx = await rUSD.approve(MESSAGING_CONTRACT_ADDRESS, ethers.MaxUint256);
+        toast("Approving rUSD usage...");
+        await approveTx.wait();
+      }
 
       const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, signer);
       const tx = await messaging.stakeForMessage(
@@ -471,7 +935,6 @@ function App() {
       setTxHash(tx.hash);
       await tx.wait();
 
-      const recipient = match.matchAddress;
       setActiveChat(recipient);
       if (!chatMessages[recipient]) {
         setChatMessages(prev => ({
@@ -482,9 +945,44 @@ function App() {
 
       toast.success("Message Staked! You can now chat.");
       setStep('chat');
+
+      // Send an automated greeting to initiate XMTP session
+      if (xmtpClient) {
+        try {
+          const conversation = await xmtpClient.conversations.createDm(recipient);
+          await conversation.sync(); 
+          const encoded = await encodeText("hi, I just staked a match credit to connect with you! 👋");
+          await conversation.send(encoded);
+        } catch (e) {
+          console.warn("Failed to send auto-greeting", e);
+        }
+      }
     } catch (error: any) {
       console.error("Staking failed:", error);
       alert(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const claimStake = async () => {
+    if (!activeChat || !address) return;
+    const toastId = toast.loading("Claiming stake...");
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, signer);
+      
+      const tx = await messaging.claimStake(activeChat);
+      setTxHash(tx.hash);
+      await tx.wait();
+      
+      toast.success("Stake claimed successfully!", { id: toastId });
+      setHasActiveStake(false);
+    } catch (error: any) {
+      console.error("Claim stake failed:", error);
+      toast.error(`Claim failed: ${error.message || "Unknown error"}`, { id: toastId });
     } finally {
       setLoading(false);
     }
@@ -497,8 +995,14 @@ function App() {
       const signer = await provider.getSigner();
       
       const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
-      const approveTx = await rUSD.approve(MESSAGING_CONTRACT_ADDRESS, ethers.parseEther("5"));
-      await approveTx.wait();
+      const requiredReveal = ethers.parseEther("5");
+      
+      const currentAllowance = await rUSD.allowance(address, MESSAGING_CONTRACT_ADDRESS);
+      if (currentAllowance < requiredReveal) {
+        const approveTx = await rUSD.approve(MESSAGING_CONTRACT_ADDRESS, ethers.MaxUint256);
+        toast("Approving rUSD usage...");
+        await approveTx.wait();
+      }
 
       const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, signer);
       const tx = await messaging.burnForReveal(recipient);
@@ -515,33 +1019,21 @@ function App() {
     }
   };
 
-  const getFaucetTokens = async () => {
-    setLoading(true);
-    try {
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
-      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
-      const tx = await rUSD.faucet();
-      toast("Faucet transaction sent...");
-      await tx.wait();
-      toast.success("100 rUSD added to your wallet! 💸");
-    } catch (error: any) {
-      console.error("Faucet failed:", error);
-      toast.error(`Faucet failed: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const proposeDate = async (partner: string) => {
     setLoading(true);
     try {
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const signer = await provider.getSigner();
-      
-      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
-      const approveTx = await rUSD.approve(ESCROW_CONTRACT_ADDRESS, ethers.parseEther("10"));
-      await approveTx.wait();
+            const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
+      const requiredDateStake = ethers.parseEther("10");
+
+      const currentAllowance = await rUSD.allowance(address, ESCROW_CONTRACT_ADDRESS);
+      if (currentAllowance < requiredDateStake) {
+        const approveTx = await rUSD.approve(ESCROW_CONTRACT_ADDRESS, ethers.MaxUint256);
+        toast("Approving rUSD usage...");
+        await approveTx.wait();
+      }
 
       const escrow = new ethers.Contract(ESCROW_CONTRACT_ADDRESS, ESCROW_ABI, signer);
       const tx = await escrow.proposeDate(partner);
@@ -633,17 +1125,35 @@ function App() {
     }
   };
 
-  const sendChat = () => {
+  const sendChat = async () => {
     if (!chatInput.trim() || !activeChat) return;
     
+    const messageText = chatInput;
+    
+    // Optimistic Update
     setChatMessages(prev => ({
       ...prev,
-      [activeChat]: [...(prev[activeChat] || []), { text: chatInput, sent: true }]
+      [activeChat]: [...(prev[activeChat] || []), { text: messageText, sent: true }]
     }));
     
     setChatInput('');
     if (chatTextareaRef.current) {
       chatTextareaRef.current.style.height = 'auto';
+    }
+
+    // Send via XMTP if available
+    if (xmtpClient) {
+      console.log("Preparing to send XMTP V3 message to:", activeChat);
+      try {
+        const conversation = await xmtpClient.conversations.createDm(activeChat);
+        await conversation.sync(); 
+        const encoded = await encodeText(messageText);
+        await conversation.send(encoded);
+        console.log("✅ Message sent via XMTP V3 (MLS)");
+      } catch (error) {
+        console.error("❌ Failed to send message via XMTP V3:", error);
+        toast.error("Real-time delivery failed");
+      }
     }
   };
 
@@ -783,6 +1293,45 @@ function App() {
                 </p>
               </div>
               
+              <div className="profile-stats" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
+                <div className="stat-item">
+                  <span className="stat-value" style={{ display: 'block', fontSize: '1.2rem', fontWeight: 'bold' }}>{matches.length}</span>
+                  <span className="stat-label" style={{ fontSize: '0.8rem', opacity: 0.7 }}>Matches</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-value" style={{ display: 'block', fontSize: '1.2rem', fontWeight: 'bold' }}>{Object.keys(chatMessages).length}</span>
+                  <span className="stat-label" style={{ fontSize: '0.8rem', opacity: 0.7 }}>Chats</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-value" style={{ display: 'block', fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>{parseFloat(rusdBalance).toFixed(2)}</span>
+                  <span className="stat-label" style={{ fontSize: '0.8rem', opacity: 0.7 }}>rUSD</span>
+                </div>
+                <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <button 
+                    className="text-btn" 
+                    onClick={getFaucetrUSD} 
+                    disabled={loading}
+                    style={{ fontSize: '0.75rem', padding: '4px 8px', border: '1px solid var(--accent)', borderRadius: '4px' }}
+                  >
+                    {loading ? "..." : "🪙 Faucet"}
+                  </button>
+                  <button 
+                    className="text-btn" 
+                    onClick={revokeXmtpInstallations} 
+                    style={{ fontSize: '0.65rem', opacity: 0.5, border: 'none', background: 'transparent' }}
+                  >
+                    Rescue XMTP
+                  </button>
+                  <button 
+                    className="text-btn" 
+                    onClick={clearXmtpOpfs} 
+                    style={{ fontSize: '0.65rem', opacity: 0.5, border: 'none', background: 'transparent', color: 'var(--error, #ff4444)' }}
+                  >
+                    Clear XMTP DB
+                  </button>
+                </div>
+              </div>
+
               <div className="input-group">
                 <label className="input-label">Profile Photo</label>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -889,12 +1438,6 @@ function App() {
                 )}
               </button>
 
-              <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', textAlign: 'center' }}>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Need test tokens for staking?</p>
-                <button className="text-btn" onClick={getFaucetTokens} disabled={loading} style={{ fontSize: '0.9rem' }}>
-                    Get 100 rUSD (Faucet) 💸
-                </button>
-              </div>
             </GlassCard>
 
             <aside>
@@ -997,16 +1540,30 @@ function App() {
                         <svg viewBox="0 0 36 36">
                           <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3" />
                           <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--accent)" strokeWidth="3" 
-                            strokeDasharray={`${(m.score / 100) * 97.4} 97.4`}
+                            strokeDasharray={`${(m.score / 10000) * 97.4} 97.4`}
                             strokeLinecap="round" />
                         </svg>
-                        <span className="score-text">{m.score}%</span>
+                        <span className="score-text">{(m.score / 100).toFixed(1)}%</span>
                       </div>
                     </div>
                     <div className="match-actions">
-                      <button onClick={() => stakeAndMessage(m)} className="primary-btn" disabled={loading}>
-                        {loading ? "Processing..." : "Stake & Connect"}
-                      </button>
+                      {chatMessages[m.matchAddress] || Object.keys(chatMessages).some(k => k.toLowerCase() === m.matchAddress.toLowerCase()) ? (
+                        <button 
+                          onClick={() => {
+                            const actualKey = Object.keys(chatMessages).find(k => k.toLowerCase() === m.matchAddress.toLowerCase()) || m.matchAddress;
+                            setActiveChat(actualKey);
+                            setStep('chat');
+                          }} 
+                          className="primary-btn connected-btn"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px' }}><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                          Go to Chat
+                        </button>
+                      ) : (
+                        <button onClick={() => stakeAndMessage(m)} className="primary-btn" disabled={loading}>
+                          {loading ? "Processing..." : "Stake & Connect"}
+                        </button>
+                      )}
                     </div>
                   </GlassCard>
                 ))}
@@ -1172,34 +1729,62 @@ function App() {
                         </button>
                       </div>
                     )}
-                    {chatMessages[activeChat]?.length === 0 && (
+                    {chatMessages[activeChat]?.length === 0 && !hasActiveStake && (
                       <div className="empty-chat">
                         <p>No messages yet. Start the conversation!</p>
                       </div>
                     )}
+                    
+                    {/* Centered Claim Reward Overlay */}
+                    {hasActiveStake && (
+                      <div className="chat-lock-overlay animate-in">
+                        <div className="chat-lock-content">
+                          <div className="lock-icon-large">🎁</div>
+                          <h3>New Connection Reward!</h3>
+                          <p>A user has staked tokens to message you. Claim the tokens to unlock this chat session.</p>
+                          <button 
+                            className="primary-btn" 
+                            onClick={claimStake}
+                            style={{ width: 'auto', padding: '0.8rem 2rem', marginTop: '1rem', background: 'var(--accent)', color: '#000' }}
+                            disabled={loading}
+                          >
+                            {loading ? "Processing..." : "Claim & Unlock Chat →"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="chat-input-bar">
+                  <div className={`chat-input-bar ${hasActiveStake ? 'locked' : ''}`}>
                     <div style={{ flex: 1, position: 'relative' }}>
                       <textarea 
                         ref={chatTextareaRef}
                         className="chat-input" 
-                        placeholder="Type a message..." 
+                        placeholder={hasActiveStake ? "Claim reward to unlock chat..." : "Type a message..."} 
                         value={chatInput} 
                         onChange={handleChatInputChange}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
+                          if (e.key === 'Enter' && !e.shiftKey && !hasActiveStake) {
                             e.preventDefault();
                             sendChat();
                           }
                         }}
                         rows={1}
+                        disabled={hasActiveStake}
                       />
-                      <div className="chat-char-count">
-                        {chatInput.length}/{MAX_CHAT_CHARS}
-                      </div>
+                      {!hasActiveStake && (
+                        <div className="chat-char-count">
+                          {chatInput.length}/{MAX_CHAT_CHARS}
+                        </div>
+                      )}
                     </div>
-                    <button className="chat-send-btn" onClick={sendChat}>Send</button>
+                    <button 
+                      className="chat-send-btn" 
+                      onClick={sendChat}
+                      disabled={hasActiveStake || !chatInput.trim()}
+                    >
+                      Send
+                    </button>
                   </div>
                 </GlassCard>
                 </>

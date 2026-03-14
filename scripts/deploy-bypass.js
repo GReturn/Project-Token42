@@ -39,7 +39,7 @@ async function main() {
         rUSDAddress = "0x0000000000000000000000000000000000000000"; 
     }
 
-    const aiAgentAddress = "0x375ac89e80AE2169EC049B5780831A58bab5f7e3";
+    const aiAgentAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
     console.log("Deploying Token42Profile...");
     const Token42Profile = await hre.ethers.getContractFactory("Token42Profile");

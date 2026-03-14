@@ -12,7 +12,7 @@ module.exports = {
         passetHub: {
             polkavm: true,
             url: "https://eth-rpc-testnet.polkadot.io",
-            accounts: [vars.get("PRIVATE_KEY")],
+            accounts: [process.env.PRIVATE_KEY || vars.get("PRIVATE_KEY")],
         },
     },
 };

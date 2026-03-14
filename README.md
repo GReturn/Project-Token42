@@ -74,6 +74,38 @@ Token42 is built on a **four-layer decentralized stack**:
 
 ---
 
+### 🔄 XMTP V3 Messaging Flow (MLS)
+
+Token42 uses XMTP V3 (MLS) for real-time, end-to-end encrypted messaging. Unlike legacy V2, V3 uses a "Group" architecture for all DMs, relying on a Welcome protocol and a local encrypted database (OPFS).
+
+```mermaid
+sequenceDiagram
+    participant A as User A (Sender)
+    participant N as XMTP Network (Nodes)
+    participant B as User B (Receiver)
+    participant DB as Local DB (OPFS)
+
+    Note over A: 1. createDm(B_Addr)
+    A->>N: Fetch B's Inbox ID
+    A->>N: Publish MLS Welcome + Keys
+    A->>N: Send Encrypted Message Packet
+    
+    Note over B: 2. Background sync()
+    B->>N: Query for new Welcomes
+    N-->>B: Return Welcome Packet
+    Note over B: 3. Decrypt Welcome
+    B->>DB: Store Group Keys
+
+    Note over B: 4. Message stream()
+    B->>N: Fetch Encrypted Packets
+    N-->>B: Return Packets
+    Note over B: 5. Decrypt Message (using keys from DB)
+    B->>B: Resolve Sender Wallet Address
+    Note over B: 6. Update UI
+```
+
+---
+
 ## 🧰 Technology Stack
 
 | Layer | Technology | Purpose |
@@ -171,10 +203,11 @@ npm run dev
 ## 🚀 Deployment Status (Paseo Asset Hub)
 
 The contracts are live on the **Paseo Asset Hub (Revive EVM)**:
-- **Token42Profile**: `0x6B9EB0Aaa10bC763C1d6c23C0dF1D59cAc458a44`
-- **Token42Messaging**: `0x0746242E447fAec6E2eAB20184631E65bf33be0d`
-- **Token42Escrow**: `0xA4094E6BfEf287E739FAfaE575cE338754cd8D1D`
-- **MockRUSD**: `0x6b6cFE04Ceba0d1B5a8297f4Aa20F1c831079Ec5` (with `faucet()` function)
+- **Token42Profile**: `0x9B9f7569A535Cd2B66EC9B2F5509F5e688Ba92B5`
+- **Token42Messaging**: `0x8B8d13a7f678FA8f6793290Ee9e46302Be427453`
+- **Token42Escrow**: `0xb6B64176CC8a8350AB84D466CD4bf111C3A6E7a5`
+- **MockRUSD**: `0xFE4eae5d84412B70b1f04b3F78351a654D28Da25`
+ (with `faucet()` function)
 
 ---
 
