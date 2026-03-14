@@ -589,6 +589,7 @@ function App() {
                 console.warn(`Resolution sync failed for ${topic.substring(0, 8)}, trying members anyway...`);
               }
               const members = await group.members();
+              console.log(`Group ${topic.substring(0, 8)} members:`, members.map((m: any) => m.inboxId));
               const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
               if (otherMember && (otherMember as any).accountAddresses.length > 0) {
                 const addr = ethers.getAddress((otherMember as any).accountAddresses[0]);
@@ -1295,6 +1296,7 @@ function App() {
         console.log("🎯 Targeting Recipient Inbox ID:", inboxId);
         
         const conversation = await xmtpClient.conversations.createDm(inboxId);
+        console.log(`📡 DM Conversation created/found: ${conversation.id.substring(0, 8)}`);
         try {
           await conversation.sync(); 
         } catch (syncErr) {
