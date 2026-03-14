@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
-import { Client, encodeText } from '@xmtp/browser-sdk';
+import { Client, encodeText, createBackend, getInboxIdForIdentifier } from '@xmtp/browser-sdk';
 import { uploadToIPFS, fetchFromIPFS, fetchImageFromIPFS, UserProfile } from './utils/storage';
 import { STORAGE_CONFIG } from './config/storage';
 import { toast, Toaster } from 'react-hot-toast';
@@ -91,6 +91,7 @@ function App() {
   const [localAvatarPreview, setLocalAvatarPreview] = useState<string | null>(null);
   const [cachedAvatarUrls, setCachedAvatarUrls] = useState<Record<string, string>>({});
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const isInitializingXmtp = useRef(false);
 
   const MAX_CHAT_CHARS = 500;
 
@@ -175,26 +176,46 @@ function App() {
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, provider);
       
-      const filter = messaging.filters.MessageStaked(address);
-      const events = await messaging.queryFilter(filter, 0);
+      // Get stakes we SENT
+      // Fetch all MessageStaked events for the last 5000 blocks and filter locally
+      // This avoids RPC compatibility issues with 'null' wildcards in topic filters.
+      const filter = messaging.filters.MessageStaked();
+      const recentEvents = await messaging.queryFilter(filter, -5000);
 
-      if (events.length > 0) {
-        console.log(`Found ${events.length} legacy on-chain stakes.`);
+      const allEvents = recentEvents.filter((event: any) => {
+        if (!event.args) return false;
+        const sender = event.args.sender.toLowerCase();
+        const recipient = event.args.recipient.toLowerCase();
+        const myAddr = address.toLowerCase();
+        return sender === myAddr || recipient === myAddr;
+      });
+
+      if (allEvents.length > 0) {
+        console.log(`Found ${allEvents.length} relevant on-chain stakes.`);
         const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
         
         const newChats: Record<string, any[]> = { ...chatMessages };
         let changed = false;
 
-        for (const event of events) {
-          if ('args' in event) {
-            const recipient = event.args.recipient;
-            if (!newChats[recipient]) {
-              console.log("Restoring session for:", recipient);
-              newChats[recipient] = [];
+        for (const event of allEvents) {
+          const log = event as any;
+          if (log.args) {
+            const sender = log.args.sender;
+            const recipient = log.args.recipient;
+            const partner = sender.toLowerCase() === address.toLowerCase() ? recipient.toLowerCase() : sender.toLowerCase();
+            
+            // Note: chatMessages keys are generally stored lowercase for easier matching, 
+            // but the app uses mixed case in some places. Let's try to normalize or check both.
+            const existingKeys = Object.keys(newChats).map(k => k.toLowerCase());
+            
+            if (!existingKeys.includes(partner)) {
+              console.log("Restoring session for partner:", partner);
+              const checksummedPartner = ethers.getAddress(partner);
+              newChats[checksummedPartner] = [];
               changed = true;
               
               try {
-                const cid = await profileContract.getProfileCID(recipient);
+                const cid = await profileContract.getProfileCID(checksummedPartner);
                 if (cid) {
                   const metadata = await fetchFromIPFS(cid);
                   if (metadata.avatar) {
@@ -202,9 +223,9 @@ function App() {
                     setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
                   }
                   setMatches(prev => {
-                    if (prev.some(m => m.matchAddress.toLowerCase() === recipient.toLowerCase())) return prev;
+                    if (prev.some(m => m.matchAddress.toLowerCase() === partner)) return prev;
                     return [...prev, {
-                      matchAddress: recipient,
+                      matchAddress: checksummedPartner,
                       matchBio: metadata.bio,
                       matchName: metadata.name,
                       avatar: metadata.avatar,
@@ -213,7 +234,7 @@ function App() {
                   });
                 }
               } catch (e) {
-                console.warn("Match metadata restoration failed for", recipient);
+                console.warn("Match metadata restoration failed for", partner);
               }
             }
           }
@@ -335,13 +356,14 @@ function App() {
   };
 
   const initXMTP = async () => {
-    if (!address || xmtpClient) return;
+    if (!address || xmtpClient || isInitializingXmtp.current) return;
     setIsXmtpLoading(true);
+    isInitializingXmtp.current = true;
     try {
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const signer = await provider.getSigner();
       
-      console.log("Initializing XMTP V3 client...");
+      console.log("Initializing XMTP V3 client with persistent DB...");
       
       // Wrap Ethers signer for XMTP V3
       const xmtpSigner = {
@@ -357,16 +379,114 @@ function App() {
       };
 
       const client = await Client.create(xmtpSigner as any, { 
-        env: "dev"
+        env: "dev",
+        dbPath: `token42-${address.toLowerCase()}.db`
       } as any);
+      
       setXmtpClient(client);
       console.log("✅ XMTP V3 initialized. Inbox ID:", client.inboxId);
       toast.success("Real-time messaging active!");
     } catch (error: any) {
       console.error("XMTP V3 initialization failed:", error);
-      toast.error("Failed to enable real-time messaging");
+      if (error.message?.includes("Access Handles cannot be created")) {
+        toast.error("Storage locked. Please close other browser tabs.", { duration: 5000 });
+      } else if (error.message?.includes("already registered 10/10 installations")) {
+        toast.error("Session limit reached. Use 'Rescue XMTP' in Profile.", { duration: 6000 });
+      } else {
+        toast.error("Failed to enable real-time messaging");
+      }
     } finally {
       setIsXmtpLoading(false);
+      isInitializingXmtp.current = false;
+    }
+  };
+
+  const revokeXmtpInstallations = async () => {
+    if (!address) return;
+    const toastId = toast.loading("Performing Emergency Rescue (v2)...");
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const walletAddress = await signer.getAddress();
+
+      const xmtpSigner = {
+        type: 'EOA' as const,
+        getIdentifier: async () => ({
+          identifier: walletAddress,
+          identifierKind: 0 as any
+        }),
+        signMessage: async (message: string) => {
+          const sig = await signer.signMessage(message);
+          return ethers.getBytes(sig);
+        }
+      };
+
+      // v2 logic: use static methods that don't need a local DB instance
+      console.log("🚀 Starting Static Revocation Flow...");
+      const backend = await createBackend({ env: "dev" });
+      
+      const inboxId = await getInboxIdForIdentifier(backend, {
+        identifier: walletAddress,
+        identifierKind: 0
+      });
+
+      if (!inboxId) {
+        toast.error("No XMTP identity found on network.", { id: toastId });
+        return;
+      }
+
+      console.log("Found Inbox ID:", inboxId);
+      const states = await Client.fetchInboxStates([inboxId], backend);
+      const inboxState = states[0];
+      
+      if (!inboxState || inboxState.installations.length === 0) {
+        toast.success("No active installations to revoke!", { id: toastId });
+        return;
+      }
+
+      const installationIds = inboxState.installations.map(inst => inst.bytes);
+      console.log(`Revoking ${installationIds.length} installations...`);
+
+      // Static revoke (requires signer + inboxId + array of IDs)
+      await Client.revokeInstallations(xmtpSigner as any, inboxId, installationIds, backend);
+      
+      toast.success("Network sessions cleared! Now click 'Clear XMTP DB' then refresh.", { id: toastId, duration: 8000 });
+    } catch (error: any) {
+      console.error("Rescue v2 failed:", error);
+      toast.error(`Force rescue failed: ${error.message}. Use 'Clear XMTP DB' and refresh first.`, { id: toastId, duration: 10000 });
+    }
+  };
+
+  // Deletes all XMTP .db files from the browser's OPFS (Origin Private File System).
+  // This is NOT localStorage — XMTP V3 stores encrypted DB files in a sandboxed filesystem.
+  // This only affects this site (localhost) and does not touch cookies or other sites.
+  const clearXmtpOpfs = async () => {
+    const toastId = toast.loading("Clearing XMTP local database...");
+    try {
+      const root = await navigator.storage.getDirectory();
+      const filesToDelete: string[] = [];
+
+      // List all entries in OPFS root
+      for await (const [name] of (root as any).entries()) {
+        if (name.endsWith('.db') || name.startsWith('token42-')) {
+          filesToDelete.push(name);
+        }
+      }
+
+      if (filesToDelete.length === 0) {
+        toast.success("No XMTP database files found.", { id: toastId });
+        return;
+      }
+
+      for (const name of filesToDelete) {
+        await root.removeEntry(name, { recursive: true });
+        console.log(`Deleted OPFS entry: ${name}`);
+      }
+
+      toast.success(`Cleared ${filesToDelete.length} XMTP DB file(s). Please refresh.`, { id: toastId });
+    } catch (error: any) {
+      console.error("OPFS clear failed:", error);
+      toast.error(`Failed to clear: ${error.message}`, { id: toastId });
     }
   };
 
@@ -384,11 +504,9 @@ function App() {
     let stream: any;
     const startStreaming = async () => {
       try {
-        // Initial sync of existing conversations
         await xmtpClient.conversations.sync();
         console.log("✅ XMTP V3 initial sync complete.");
 
-        // Periodic sync in background (every 15s) to find new groups/DMs
         const syncInterval = setInterval(async () => {
           try {
             await xmtpClient.conversations.sync();
@@ -397,39 +515,79 @@ function App() {
           }
         }, 15000);
 
-        // Stream new conversations (discovery)
+        // 1. Stream Conversations (to detect NEW DMs)
         const runConvStream = async () => {
           try {
             const convStream = await xmtpClient.conversations.stream();
             for await (const conversation of convStream) {
-              console.log("New XMTP conversation discovered:", conversation.id);
+              console.log("New conversation detected:", conversation.id);
               await conversation.sync();
+              
+              const members = await conversation.members();
+              const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
+              if (otherMember && (otherMember as any).accountAddresses.length > 0) {
+                const partnerAddress = ethers.getAddress((otherMember as any).accountAddresses[0]);
+                setChatMessages(prev => {
+                  if (prev[partnerAddress]) return prev;
+                  return { ...prev, [partnerAddress]: [] };
+                });
+                
+                // Also trigger profile resolution for this new partner
+                try {
+                  const provider = new ethers.BrowserProvider((window as any).ethereum);
+                  const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
+                  const cid = await profileContract.getProfileCID(partnerAddress);
+                  if (cid) {
+                    const metadata = await fetchFromIPFS(cid);
+                    setMatches(prev => {
+                      if (prev.some(m => m.matchAddress.toLowerCase() === partnerAddress.toLowerCase())) return prev;
+                      return [...prev, {
+                        matchAddress: partnerAddress,
+                        matchName: metadata.name,
+                        matchBio: metadata.bio,
+                        avatar: metadata.avatar,
+                        score: 10000
+                      }];
+                    });
+                  }
+                } catch (e) { console.warn("Failed to resolve profile for new conversation:", partnerAddress); }
+              }
             }
-          } catch (e) {
-            console.error("Conversation stream error:", e);
-          }
+          } catch (e) { console.error("Conversation stream error:", e); }
         };
         runConvStream();
 
-        // Stream all messages
+        // 2. Stream Messages (for existing or newly discovered DMs)
         stream = await xmtpClient.conversations.streamAllMessages();
         console.log("Listening for XMTP V3 messages...");
         
         for await (const message of stream) {
           if (message.senderInboxId === xmtpClient.inboxId) continue;
 
-          console.log("New XMTP V3 message received:", message.content);
-          
-          setChatMessages(prev => {
-            const sender = activeChat?.toLowerCase() || message.senderInboxId;
-            const existing = prev[sender] || [];
-            if (existing.some((m: any) => m.text === message.content && !m.sent)) return prev;
+          try {
+            const groups = await xmtpClient.conversations.list();
+            const group = groups.find((g: any) => g.topic === message.groupTopic);
             
-            return {
-              ...prev,
-              [sender]: [...existing, { text: message.content as string, sent: false }]
-            };
-          });
+            if (group) {
+              await group.sync();
+              const members = await group.members();
+              const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
+            
+              if (otherMember && (otherMember as any).accountAddresses.length > 0) {
+                const senderAddress = ethers.getAddress((otherMember as any).accountAddresses[0]);
+                setChatMessages(prev => {
+                  const existing = prev[senderAddress] || [];
+                  if (existing.some((m: any) => m.text === message.content && !m.sent)) return prev;
+                  return {
+                    ...prev,
+                    [senderAddress]: [...existing, { text: message.content as string, sent: false }]
+                  };
+                });
+              }
+            }
+          } catch (e) {
+            console.error("Failed to resolve sender address for message:", e);
+          }
         }
         
         return () => clearInterval(syncInterval);
@@ -445,7 +603,7 @@ function App() {
         stream.return?.();
       }
     };
-  }, [xmtpClient, activeChat]);
+  }, [xmtpClient]);
 
   // Check stake status when active chat changes
   useEffect(() => {
@@ -608,13 +766,14 @@ function App() {
               // or just accept that the try-catch will handle it.
               const owner = await profileContract.ownerOf(tokenId);
               const ownerAddr = owner.toLowerCase();
-              if (ownerAddr !== address.toLowerCase()) {
-                  // Filter out already staked recipients (those we already have a session with)
-                  if (!chatMessages[ownerAddr]) {
-                      const cid = await profileContract.getProfileCID(owner);
-                      potentialMatches.push({ address: owner, cid });
-                  }
-              }
+                if (ownerAddr !== address.toLowerCase()) {
+                    // Filter out already staked recipients (those we already have a session with)
+                    const lowerChatKeys = Object.keys(chatMessages).map(k => k.toLowerCase());
+                    if (!lowerChatKeys.includes(ownerAddr)) {
+                        const cid = await profileContract.getProfileCID(owner);
+                        potentialMatches.push({ address: owner, cid });
+                    }
+                }
               consecutiveErrors = 0;
           } catch (e: any) {
               // Ignore "TokenDoesNotExist" or similar errors as they indicate end of list
@@ -682,6 +841,16 @@ function App() {
   const stakeAndMessage = async (match: any) => {
     setLoading(true);
     try {
+      const recipient = ethers.getAddress(match.matchAddress);
+      
+      // If already staked/connected, just go to chat
+      const lowerChatKeys = Object.keys(chatMessages).map(k => k.toLowerCase());
+      if (lowerChatKeys.includes(recipient.toLowerCase())) {
+        setActiveChat(recipient);
+        setStep('chat');
+        return;
+      }
+
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const signer = await provider.getSigner();
       
@@ -712,7 +881,6 @@ function App() {
       setTxHash(tx.hash);
       await tx.wait();
 
-      const recipient = match.matchAddress;
       setActiveChat(recipient);
       if (!chatMessages[recipient]) {
         setChatMessages(prev => ({
@@ -723,6 +891,20 @@ function App() {
 
       toast.success("Message Staked! You can now chat.");
       setStep('chat');
+
+      // Send an automated greeting to initiate XMTP session
+      if (xmtpClient) {
+        try {
+          // Some XMTP V3 environments fail if 0x is present in the createDm call
+          const cleanAddr = recipient.toLowerCase().replace('0x', '');
+          const conversation = await xmtpClient.conversations.createDm(cleanAddr);
+          await conversation.sync(); // Force sync to ensure local DB has sequence IDs
+          const encoded = await encodeText("hi, I just staked a match credit to connect with you! 👋");
+          await conversation.send(encoded);
+        } catch (e) {
+          console.warn("Failed to send auto-greeting", e);
+        }
+      }
     } catch (error: any) {
       console.error("Staking failed:", error);
       alert(`Error: ${error.message}`);
@@ -911,8 +1093,10 @@ function App() {
     if (xmtpClient) {
       console.log("Preparing to send XMTP V3 message to:", activeChat);
       try {
-        // Use checksummed address for V3 lookups to avoid "invalid hex" errors
-        const conversation = await xmtpClient.conversations.createDm(ethers.getAddress(activeChat));
+        // Some XMTP V3 environments fail if 0x is present in the createDm call
+        const cleanAddr = activeChat.toLowerCase().replace('0x', '');
+        const conversation = await xmtpClient.conversations.createDm(cleanAddr);
+        await conversation.sync(); // Force sync to ensure local DB has sequence IDs
         const encoded = await encodeText(messageText);
         await conversation.send(encoded);
         console.log("✅ Message sent via XMTP V3 (MLS)");
@@ -1072,7 +1256,7 @@ function App() {
                   <span className="stat-value" style={{ display: 'block', fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>{parseFloat(rusdBalance).toFixed(2)}</span>
                   <span className="stat-label" style={{ fontSize: '0.8rem', opacity: 0.7 }}>rUSD</span>
                 </div>
-                <div style={{ marginLeft: 'auto' }}>
+                <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <button 
                     className="text-btn" 
                     onClick={getFaucetrUSD} 
@@ -1080,6 +1264,20 @@ function App() {
                     style={{ fontSize: '0.75rem', padding: '4px 8px', border: '1px solid var(--accent)', borderRadius: '4px' }}
                   >
                     {loading ? "..." : "🪙 Faucet"}
+                  </button>
+                  <button 
+                    className="text-btn" 
+                    onClick={revokeXmtpInstallations} 
+                    style={{ fontSize: '0.65rem', opacity: 0.5, border: 'none', background: 'transparent' }}
+                  >
+                    Rescue XMTP
+                  </button>
+                  <button 
+                    className="text-btn" 
+                    onClick={clearXmtpOpfs} 
+                    style={{ fontSize: '0.65rem', opacity: 0.5, border: 'none', background: 'transparent', color: 'var(--error, #ff4444)' }}
+                  >
+                    Clear XMTP DB
                   </button>
                 </div>
               </div>
@@ -1433,16 +1631,6 @@ function App() {
                       >
                         🤝 Verify Date
                       </button>
-                      {hasActiveStake && (
-                        <button 
-                          className="primary-btn" 
-                          onClick={claimStake}
-                          style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.85rem', background: 'var(--accent)', color: '#000' }}
-                          disabled={loading}
-                        >
-                          {loading ? "Claiming..." : "🎁 Claim Reward"}
-                        </button>
-                      )}
                       <StatusBadge status="verified" label="Staked" />
                     </div>
                   </div>
@@ -1477,34 +1665,62 @@ function App() {
                         </button>
                       </div>
                     )}
-                    {chatMessages[activeChat]?.length === 0 && (
+                    {chatMessages[activeChat]?.length === 0 && !hasActiveStake && (
                       <div className="empty-chat">
                         <p>No messages yet. Start the conversation!</p>
                       </div>
                     )}
+                    
+                    {/* Centered Claim Reward Overlay */}
+                    {hasActiveStake && (
+                      <div className="chat-lock-overlay animate-in">
+                        <div className="chat-lock-content">
+                          <div className="lock-icon-large">🎁</div>
+                          <h3>New Connection Reward!</h3>
+                          <p>A user has staked tokens to message you. Claim the tokens to unlock this chat session.</p>
+                          <button 
+                            className="primary-btn" 
+                            onClick={claimStake}
+                            style={{ width: 'auto', padding: '0.8rem 2rem', marginTop: '1rem', background: 'var(--accent)', color: '#000' }}
+                            disabled={loading}
+                          >
+                            {loading ? "Processing..." : "Claim & Unlock Chat →"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="chat-input-bar">
+                  <div className={`chat-input-bar ${hasActiveStake ? 'locked' : ''}`}>
                     <div style={{ flex: 1, position: 'relative' }}>
                       <textarea 
                         ref={chatTextareaRef}
                         className="chat-input" 
-                        placeholder="Type a message..." 
+                        placeholder={hasActiveStake ? "Claim reward to unlock chat..." : "Type a message..."} 
                         value={chatInput} 
                         onChange={handleChatInputChange}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
+                          if (e.key === 'Enter' && !e.shiftKey && !hasActiveStake) {
                             e.preventDefault();
                             sendChat();
                           }
                         }}
                         rows={1}
+                        disabled={hasActiveStake}
                       />
-                      <div className="chat-char-count">
-                        {chatInput.length}/{MAX_CHAT_CHARS}
-                      </div>
+                      {!hasActiveStake && (
+                        <div className="chat-char-count">
+                          {chatInput.length}/{MAX_CHAT_CHARS}
+                        </div>
+                      )}
                     </div>
-                    <button className="chat-send-btn" onClick={sendChat}>Send</button>
+                    <button 
+                      className="chat-send-btn" 
+                      onClick={sendChat}
+                      disabled={hasActiveStake || !chatInput.trim()}
+                    >
+                      Send
+                    </button>
                   </div>
                 </GlassCard>
                 </>
