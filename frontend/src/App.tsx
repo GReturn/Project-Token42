@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
-import { uploadToIPFS, fetchFromIPFS, UserProfile } from './utils/storage';
+import { uploadToIPFS, fetchFromIPFS, fetchImageFromIPFS, UserProfile } from './utils/storage';
 import { STORAGE_CONFIG } from './config/storage';
 import { toast, Toaster } from 'react-hot-toast';
 import Navbar from './components/Navbar';
@@ -80,6 +80,7 @@ function App() {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
   const [pendingAvatarBlob, setPendingAvatarBlob] = useState<Blob | null>(null);
   const [localAvatarPreview, setLocalAvatarPreview] = useState<string | null>(null);
+  const [cachedAvatarUrls, setCachedAvatarUrls] = useState<Record<string, string>>({});
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const MAX_CHAT_CHARS = 500;
@@ -88,8 +89,72 @@ function App() {
     if (address) {
       checkNetwork();
       checkProfileStatus();
+      loadPersistedData();
     }
   }, [address]);
+
+  // Persist Chats
+  useEffect(() => {
+    if (address && Object.keys(chatMessages).length > 0) {
+      localStorage.setItem(`chats_${address.toLowerCase()}`, JSON.stringify(chatMessages));
+    }
+  }, [chatMessages, address]);
+
+  // Persist Matches
+  useEffect(() => {
+    if (address && matches.length > 0) {
+      localStorage.setItem(`matches_${address.toLowerCase()}`, JSON.stringify(matches));
+    }
+  }, [matches, address]);
+
+  const loadPersistedData = async () => {
+    if (!address) return;
+    
+    // Load Matches
+    const savedMatches = localStorage.getItem(`matches_${address.toLowerCase()}`);
+    if (savedMatches) {
+      try {
+        const parsed = JSON.parse(savedMatches);
+        setMatches(parsed);
+        // Resolve images for matches
+        parsed.forEach(async (m: any) => {
+          if (m.avatar) {
+            const url = await fetchImageFromIPFS(m.avatar);
+            setCachedAvatarUrls(prev => ({ ...prev, [m.avatar]: url }));
+          }
+        });
+      } catch (e) { console.error("Failed to load saved matches", e); }
+    }
+
+    // Load Chats
+    const savedChats = localStorage.getItem(`chats_${address.toLowerCase()}`);
+    if (savedChats) {
+      try {
+        const parsed = JSON.parse(savedChats);
+        setChatMessages(parsed);
+        
+        // Resolve Recipient Profiles
+        const recipients = Object.keys(parsed);
+        const provider = new ethers.BrowserProvider((window as any).ethereum);
+        const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
+        
+        recipients.forEach(async (addr) => {
+          try {
+            const cid = await profileContract.getProfileCID(addr);
+            if (cid) {
+              const metadata = await fetchFromIPFS(cid); // Uses JSON cache
+              if (metadata.avatar) {
+                const url = await fetchImageFromIPFS(metadata.avatar); // Uses Image cache
+                setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
+              }
+            }
+          } catch (err) {
+            console.error(`Failed to resolve profile for ${addr}`, err);
+          }
+        });
+      } catch (e) { console.error("Failed to load saved chats", e); }
+    }
+  };
 
   const checkNetwork = async () => {
     if (!(window as any).ethereum) return;
@@ -134,7 +199,6 @@ function App() {
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
       
-      // Specifically check if contract exists at address
       const code = await provider.getCode(PROFILE_CONTRACT_ADDRESS);
       if (code === "0x") {
         console.error("Profile contract not found at address. Are you on the right network?");
@@ -149,6 +213,13 @@ function App() {
         const metadata = await fetchFromIPFS(cid);
         setProfile(metadata);
         setInitialProfile(metadata);
+        
+        // Resolve avatar if it exists
+        if (metadata.avatar) {
+          const url = await fetchImageFromIPFS(metadata.avatar);
+          setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
+        }
+
         setStep('matching');
       } else {
         setStep('profile');
@@ -255,6 +326,12 @@ function App() {
       setTxHash(tx.hash);
       await tx.wait();
       
+      // Prime Caches
+      localStorage.setItem(`ipfs_json_${cid}`, JSON.stringify(metadata));
+      if (finalAvatarCID && localAvatarPreview) {
+        localStorage.setItem(`ipfs_img_${finalAvatarCID}`, localAvatarPreview);
+      }
+
       setUserCID(cid);
       setProfile(metadata);
       setInitialProfile(metadata);
@@ -301,6 +378,11 @@ function App() {
             name: metadata.name,
             bio: metadata.bio
           }]);
+          
+          if (metadata.avatar) {
+            const url = await fetchImageFromIPFS(metadata.avatar);
+            setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
+          }
         } catch (e) {
           console.error("Failed to fetch match metadata:", e);
           setMatches([data]);
@@ -634,7 +716,7 @@ function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   {localAvatarPreview || profile.avatar ? (
                     <img 
-                      src={localAvatarPreview || `https://gateway.pinata.cloud/ipfs/${profile.avatar}`} 
+                      src={localAvatarPreview || cachedAvatarUrls[profile.avatar!] || `https://gateway.pinata.cloud/ipfs/${profile.avatar}`} 
                       className="avatar-upload-preview" 
                       alt="Avatar Preview" 
                       onClick={() => document.getElementById('avatar-input')?.click()}
@@ -823,7 +905,7 @@ function App() {
                     <div className="match-card-body">
                       <div className={`match-avatar ${!revealedUsers.has(m.matchAddress.toLowerCase()) ? 'blurred' : ''}`}>
                         {m.avatar ? (
-                          <img src={`https://gateway.pinata.cloud/ipfs/${m.avatar}`} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                          <img src={cachedAvatarUrls[m.avatar] || `https://gateway.pinata.cloud/ipfs/${m.avatar}`} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                         ) : (
                           m.matchAddress ? m.matchAddress.slice(2, 4).toUpperCase() : '??'
                         )}
@@ -856,7 +938,15 @@ function App() {
               <GlassCard className="sidebar-card">
                 <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>Your Identity</h3>
                 <div className="identity-row">
-                  <div className="identity-avatar" />
+                  <div className="identity-avatar">
+                    {(localAvatarPreview || profile.avatar) && (
+                      <img 
+                        src={localAvatarPreview || cachedAvatarUrls[profile.avatar!] || `https://gateway.pinata.cloud/ipfs/${profile.avatar}`} 
+                        alt="" 
+                        style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} 
+                      />
+                    )}
+                  </div>
                   <div>
                     <div className="identity-name">{profile.name || 'Anonymous'}</div>
                     <StatusBadge status="verified" label="Human" />
@@ -914,7 +1004,11 @@ function App() {
                   >
                     <div className={`session-avatar ${!revealedUsers.has(addr.toLowerCase()) ? 'blurred' : ''}`}>
                       {matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar ? (
-                        <img src={`https://gateway.pinata.cloud/ipfs/${matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar}`} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        <img 
+                          src={cachedAvatarUrls[matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar!] || `https://gateway.pinata.cloud/ipfs/${matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar}`} 
+                          alt="" 
+                          style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} 
+                        />
                       ) : (
                         addr.slice(2, 4).toUpperCase()
                       )}
