@@ -253,7 +253,7 @@ export class Token42Agent {
         results.sort((a, b) => b.score - a.score);
 
         const topMatch = results[0];
-        if (topMatch && topMatch.score > 0.8) {
+        if (topMatch && topMatch.score > 0.7) {
             console.log(`Top match: ${topMatch.address} (${(topMatch.score * 100).toFixed(2)}%)`);
             const signature = await this.signMatch(currentUser.address, topMatch.address, topMatch.score, nonce);
 
@@ -288,11 +288,16 @@ if (!DEV_KEY) {
 const agent = new Token42Agent(DEV_KEY);
 
 app.post('/match', async (req, res) => {
+    console.log("📥 Received /match request");
     try {
         const { currentUser, potentialMatches, nonce } = req.body;
+        console.log(`- Current User: ${currentUser.address}`);
+        console.log(`- Potential Matches Count: ${potentialMatches?.length || 0}`);
         const result = await agent.handleMatchRequest(currentUser, potentialMatches, nonce);
+        console.log("📤 Sending /match response:", result ? "Match Found" : "No Match");
         res.json(result);
     } catch (error: any) {
+        console.error("❌ Error in /match route:", error.message);
         res.status(500).json({ error: error.message });
     }
 });
@@ -303,8 +308,8 @@ app.post('/slash', async (req, res) => {
     res.json({ status: "Slashed", sender, recipient });
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, async () => {
+const PORT = Number(process.env.PORT) || 3001;
+app.listen(PORT, '0.0.0.0', async () => {
     console.log(`\n🚀 Token42 AI Agent Server starting on http://localhost:${PORT}`);
     await agent.initXMTP();
     console.log(`Agent Address: ${agent.getAddress()}`);
