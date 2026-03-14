@@ -102,14 +102,13 @@ export async function fetchFromIPFS(cid: string): Promise<UserProfile> {
 export async function fetchImageFromIPFS(cid: string): Promise<string> {
   const cacheKey = `ipfs_img_${cid}`;
   const cached = localStorage.getItem(cacheKey);
-  if (cached) return cached;
+  if (cached && !cached.startsWith('blob:')) return cached;
+
 
   try {
     const response = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
     if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
     
-    const blob = await response.json(); // This is wrong, should be blob()
-    // Wait, I need to handle this correctly as a blob
     const rawBlob = await response.blob();
     
     return new Promise((resolve, reject) => {

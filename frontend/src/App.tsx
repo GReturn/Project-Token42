@@ -269,12 +269,13 @@ function App() {
 
   const createProfile = async () => {
     if (!address || !profile.bio) return toast.error("Please enter a bio");
+    const toastId = toast.loading("Preparing profile...");
     setLoading(true);
     try {
       let finalAvatarCID = profile.avatar;
 
       if (pendingAvatarBlob) {
-        toast.loading("Uploading image to IPFS...");
+        toast.loading("Uploading image to IPFS...", { id: toastId });
         const formData = new FormData();
         formData.append('file', pendingAvatarBlob, 'avatar.jpg');
         
@@ -297,8 +298,26 @@ function App() {
         if (!response.ok) throw new Error('Avatar upload failed');
         const result = await response.json();
         finalAvatarCID = result.IpfsHash;
+
+        // Verification: Check if image is reachable on gateway (opinion without webhooks)
+        toast.loading("Verifying image reachability...", { id: toastId });
+        let verified = false;
+        for (let i = 0; i < 3; i++) {
+          try {
+            const check = await fetch(`https://gateway.pinata.cloud/ipfs/${finalAvatarCID}`, { method: 'HEAD' });
+            if (check.ok) {
+              verified = true;
+              break;
+            }
+          } catch (e) {
+            console.warn("Reachability check failed, retrying...");
+          }
+          await new Promise(r => setTimeout(r, 1500));
+        }
+        if (!verified) console.warn("Image uploaded but not yet reachable via gateway. It will appear shortly.");
       }
 
+      toast.loading("Uploading metadata...", { id: toastId });
       const metadata: UserProfile = {
         ...profile,
         avatar: finalAvatarCID,
@@ -308,17 +327,16 @@ function App() {
       const cid = await uploadToIPFS(address, metadata);
       console.log("IPFS CID:", cid);
 
+      toast.loading("Waiting for blockchain confirm...", { id: toastId });
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const signer = await provider.getSigner();
       const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, signer);
 
       let tx;
       if (userCID) {
-        // Profile already exists, update it
         console.log("Updating existing profile...");
         tx = await profileContract.updateProfile(cid);
       } else {
-        // No profile found, mint a new one
         console.log("Minting new soulbound profile...");
         tx = await profileContract.mintProfile(cid);
       }
@@ -328,20 +346,18 @@ function App() {
       
       // Prime Caches
       localStorage.setItem(`ipfs_json_${cid}`, JSON.stringify(metadata));
-      if (finalAvatarCID && localAvatarPreview) {
-        localStorage.setItem(`ipfs_img_${finalAvatarCID}`, localAvatarPreview);
-      }
+
 
       setUserCID(cid);
       setProfile(metadata);
       setInitialProfile(metadata);
       setPendingAvatarBlob(null);
       setLocalAvatarPreview(null);
-      toast.success(userCID ? "Profile Updated!" : "Soulbound Profile Minted!");
+      toast.success(userCID ? "Profile Updated!" : "Soulbound Profile Minted!", { id: toastId });
       setStep('matching');
     } catch (error: any) {
       console.error("Profile operation failed:", error);
-      alert(`Error: ${error.message || "Unknown error"}`);
+      toast.error(`Error: ${error.message || "Unknown error"}`, { id: toastId });
     } finally {
       setLoading(false);
     }
