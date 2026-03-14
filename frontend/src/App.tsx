@@ -370,8 +370,8 @@ function App() {
       const xmtpSigner = {
         type: 'EOA' as const,
         getIdentifier: async () => ({
-          identifier: (await signer.getAddress()).toLowerCase().replace('0x', ''),
-          identifierKind: 0 as any 
+          identifier: await signer.getAddress(), // Use standard checksummed address (with 0x)
+          identifierKind: 0 as any
         }),
         signMessage: async (message: string) => {
           const sig = await signer.signMessage(message);
@@ -439,7 +439,7 @@ function App() {
       const xmtpSigner = {
         type: 'EOA' as const,
         getIdentifier: async () => ({
-          identifier: usedAddress,
+          identifier: walletAddress, // Keep the original walletAddress for the signer (local validation)
           identifierKind: 0 as any
         }),
         signMessage: async (message: string) => {
