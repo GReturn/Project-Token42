@@ -93,6 +93,46 @@ function App() {
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const isInitializingXmtp = useRef(false);
   const topicToAddress = useRef<Record<string, string>>({});
+  const addressToInboxId = useRef<Record<string, string>>({});
+
+  const resolveInboxId = async (targetAddress: string) => {
+    const lowerAddr = targetAddress.toLowerCase();
+    if (addressToInboxId.current[lowerAddr]) return addressToInboxId.current[lowerAddr];
+    
+    console.log("Resolving Inbox ID for:", lowerAddr);
+    try {
+      const backend = await createBackend({ env: "dev" });
+      
+      // Try with 0x first (Standard)
+      let inboxId = await getInboxIdForIdentifier(backend, {
+        identifier: lowerAddr,
+        identifierKind: 0 as any
+      });
+
+      if (!inboxId) {
+        console.log("Identity not found with 0x prefix, trying raw hex...");
+        inboxId = await getInboxIdForIdentifier(backend, {
+          identifier: lowerAddr.replace('0x', ''),
+          identifierKind: 0 as any
+        });
+      }
+      
+      if (inboxId) {
+        console.log("✅ Resolved Inbox ID:", inboxId);
+        addressToInboxId.current[lowerAddr] = inboxId;
+        return inboxId;
+      }
+    } catch (e) {
+      console.error("Inbox ID resolution failed:", e);
+    }
+    return null;
+  };
+
+  const isXmtpSoftSuccess = (error: any) => {
+    if (!error) return false;
+    const msg = error.message || String(error);
+    return msg.includes("[GroupError::Sync]") && msg.includes("0 failed");
+  };
 
   const MAX_CHAT_CHARS = 500;
 
@@ -385,7 +425,8 @@ function App() {
       } as any);
       
       setXmtpClient(client);
-      console.log("✅ XMTP V3 initialized. Inbox ID:", client.inboxId);
+      console.log("🆔 Client Inbox ID:", client.inboxId);
+      console.log("✅ XMTP V3 initialized for:", address);
       toast.success("Real-time messaging active!");
     } catch (error: any) {
       console.error("XMTP V3 initialization failed:", error);
@@ -542,7 +583,11 @@ function App() {
               : groupOrTopic;
 
             if (group) {
-              await group.sync();
+              try {
+                await group.sync();
+              } catch (syncErr) {
+                console.warn(`Resolution sync failed for ${topic.substring(0, 8)}, trying members anyway...`);
+              }
               const members = await group.members();
               const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
               if (otherMember && (otherMember as any).accountAddresses.length > 0) {
@@ -556,6 +601,71 @@ function App() {
           }
           return null;
         };
+
+        // 0. Reconstruct existing conversations from identifying the inbox identities on the network
+        const reconstructConversations = async () => {
+          try {
+            console.log("🔍 Reconstructing conversations from network...");
+            const existingConvs = await xmtpClient.conversations.list();
+            console.log(`Found ${existingConvs.length} existing conversations:`, existingConvs.map(c => c.id.substring(0, 8)));
+
+            for (const conv of existingConvs) {
+              try {
+                console.log(`Processing group: ${conv.id.substring(0, 8)}...`);
+                const partnerAddress = await resolveSender(conv);
+                console.log(`Group ${conv.id.substring(0, 8)}: Partner is ${partnerAddress || "Unknown"}`);
+                if (partnerAddress) {
+                  console.log(`Restoring network conversation with ${partnerAddress}`);
+                  
+                  // Initialize message state if missing
+                  setChatMessages(prev => {
+                    if (prev[partnerAddress]) return prev;
+                    return { ...prev, [partnerAddress]: [] };
+                  });
+
+                  // Sync the group to fetch messages
+                  try {
+                    console.log(`Syncing group ${conv.id.substring(0, 8)}...`);
+                    await conv.sync();
+                    console.log(`Group ${conv.id.substring(0, 8)} synced.`);
+                  } catch (syncErr) {
+                    console.warn(`Sync failed for group ${conv.id.substring(0, 8)}, skipping messages for now.`, syncErr);
+                  }
+
+                  // Trigger profile resolution for the chat list
+                  try {
+                    const provider = new ethers.BrowserProvider((window as any).ethereum);
+                    const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
+                    const cid = await profileContract.getProfileCID(partnerAddress);
+                    if (cid) {
+                      const metadata = await fetchFromIPFS(cid);
+                      setMatches(prev => {
+                        if (prev.some(m => m.matchAddress.toLowerCase() === partnerAddress.toLowerCase())) return prev;
+                        return [...prev, {
+                          matchAddress: partnerAddress,
+                          matchName: metadata.name,
+                          matchBio: metadata.bio,
+                          avatar: metadata.avatar,
+                          score: 10000
+                        }];
+                      });
+                    }
+                  } catch (e) {
+                    console.warn("Match metadata restoration failed for", partnerAddress);
+                  }
+                } else {
+                  console.warn(`Could not resolve partner for group ${conv.id.substring(0, 8)}`);
+                }
+              } catch (convErr) {
+                console.error(`Failed to process group ${conv.id.substring(0, 8)} during reconstruction:`, convErr);
+              }
+            }
+            console.log("✅ Conversation reconstruction complete.");
+          } catch (e) {
+            console.error("Failed to reconstruct conversations:", e);
+          }
+        };
+        await reconstructConversations();
 
         // 1. Stream Conversations (to detect NEW DMs)
         const runConvStream = async () => {
@@ -617,10 +727,22 @@ function App() {
             
             for await (const message of messageStream) {
               if (isTerminated) break;
-              if (message.senderInboxId === xmtpClient.inboxId) continue;
+              console.log(`Streamed raw message detected: ${message.id} in group ${(message as any).contentTopic || (message as any).topic}`);
+              if (message.senderInboxId === xmtpClient.inboxId) {
+                console.log("Skipping own message");
+                continue;
+              }
 
               // Optimization: Resolve sender using the message's group if available
-              const senderAddress = await resolveSender((message as any).group || (message as any).topic || (message as any).groupTopic);
+              const groupRef = (message as any).group || (message as any).topic || (message as any).groupTopic;
+              
+              if (!groupRef) {
+                console.warn("Message detected but no group/topic context found:", message.id);
+                continue;
+              }
+
+              console.log("Resolving sender for groupRef:", groupRef);
+              const senderAddress = await resolveSender(groupRef);
               
               if (senderAddress) {
                 // Robust Content Decoding
@@ -961,12 +1083,23 @@ function App() {
       // Send an automated greeting to initiate XMTP session
       if (xmtpClient) {
         try {
-          const conversation = await xmtpClient.conversations.createDm(recipient.toLowerCase().replace('0x', ''));
-          await conversation.sync(); 
-          const encoded = await encodeText("hi, I just staked a match credit to connect with you! 👋");
-          await conversation.send(encoded);
+          const inboxId = await resolveInboxId(recipient);
+          if (inboxId) {
+            const conversation = await xmtpClient.conversations.createDm(inboxId);
+            try {
+              await conversation.sync(); 
+            } catch (syncErr) {
+              console.warn("Auto-greeting sync warning (non-fatal):", syncErr);
+            }
+            const encoded = await encodeText("hi, I just staked a match credit to connect with you! 👋");
+            await conversation.send(encoded);
+          }
         } catch (e) {
-          console.warn("Failed to send auto-greeting", e);
+          if (isXmtpSoftSuccess(e)) {
+            console.log("✅ Auto-greeting synced (soft-success)");
+          } else {
+            console.warn("Failed to send auto-greeting", e);
+          }
         }
       }
     } catch (error: any) {
@@ -1157,14 +1290,30 @@ function App() {
     if (xmtpClient) {
       console.log("Preparing to send XMTP V3 message to:", activeChat);
       try {
-        const conversation = await xmtpClient.conversations.createDm(activeChat.toLowerCase().replace('0x', ''));
-        await conversation.sync(); 
+        const inboxId = await resolveInboxId(activeChat);
+        if (!inboxId) throw new Error("Could not resolve recipient identity");
+        console.log("🎯 Targeting Recipient Inbox ID:", inboxId);
+        
+        const conversation = await xmtpClient.conversations.createDm(inboxId);
+        try {
+          await conversation.sync(); 
+        } catch (syncErr) {
+          if (isXmtpSoftSuccess(syncErr)) {
+            console.log("Message sync report (soft-success)");
+          } else {
+            console.warn("Message sync warning (non-fatal):", syncErr);
+          }
+        }
         const encoded = await encodeText(messageText);
         await conversation.send(encoded);
         console.log("✅ Message sent via XMTP V3 (MLS)");
       } catch (error) {
-        console.error("❌ Failed to send message via XMTP V3:", error);
-        toast.error("Real-time delivery failed");
+        if (isXmtpSoftSuccess(error)) {
+          console.log("✅ Message sent via XMTP V3 (soft-success)");
+        } else {
+          console.error("❌ Failed to send message via XMTP V3:", error);
+          toast.error("Real-time delivery failed");
+        }
       }
     }
   };
