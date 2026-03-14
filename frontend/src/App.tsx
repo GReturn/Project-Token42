@@ -92,6 +92,7 @@ function App() {
   const [cachedAvatarUrls, setCachedAvatarUrls] = useState<Record<string, string>>({});
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const isInitializingXmtp = useRef(false);
+  const topicToAddress = useRef<Record<string, string>>({});
 
   const MAX_CHAT_CHARS = 500;
 
@@ -515,6 +516,29 @@ function App() {
           }
         }, 15000);
 
+        // Helper to resolve sender address from a group topic
+        const resolveSender = async (topic: string) => {
+          if (topicToAddress.current[topic]) return topicToAddress.current[topic];
+          
+          try {
+            const groups = await xmtpClient.conversations.list();
+            const group = groups.find((g: any) => g.topic === topic);
+            if (group) {
+              await group.sync();
+              const members = await group.members();
+              const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
+              if (otherMember && (otherMember as any).accountAddresses.length > 0) {
+                const addr = ethers.getAddress((otherMember as any).accountAddresses[0]);
+                topicToAddress.current[topic] = addr;
+                return addr;
+              }
+            }
+          } catch (e) {
+            console.error("Failed to resolve sender for topic:", topic, e);
+          }
+          return null;
+        };
+
         // 1. Stream Conversations (to detect NEW DMs)
         const runConvStream = async () => {
           try {
@@ -527,12 +551,14 @@ function App() {
               const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
               if (otherMember && (otherMember as any).accountAddresses.length > 0) {
                 const partnerAddress = ethers.getAddress((otherMember as any).accountAddresses[0]);
+                topicToAddress.current[conversation.topic] = partnerAddress;
+                
                 setChatMessages(prev => {
                   if (prev[partnerAddress]) return prev;
                   return { ...prev, [partnerAddress]: [] };
                 });
                 
-                // Also trigger profile resolution for this new partner
+                // Trigger profile resolution
                 try {
                   const provider = new ethers.BrowserProvider((window as any).ethereum);
                   const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
@@ -557,36 +583,36 @@ function App() {
         };
         runConvStream();
 
-        // 2. Stream Messages (for existing or newly discovered DMs)
+        // 2. Stream Messages
         stream = await xmtpClient.conversations.streamAllMessages();
         console.log("Listening for XMTP V3 messages...");
         
         for await (const message of stream) {
           if (message.senderInboxId === xmtpClient.inboxId) continue;
 
-          try {
-            const groups = await xmtpClient.conversations.list();
-            const group = groups.find((g: any) => g.topic === message.groupTopic);
-            
-            if (group) {
-              await group.sync();
-              const members = await group.members();
-              const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
-            
-              if (otherMember && (otherMember as any).accountAddresses.length > 0) {
-                const senderAddress = ethers.getAddress((otherMember as any).accountAddresses[0]);
-                setChatMessages(prev => {
-                  const existing = prev[senderAddress] || [];
-                  if (existing.some((m: any) => m.text === message.content && !m.sent)) return prev;
-                  return {
-                    ...prev,
-                    [senderAddress]: [...existing, { text: message.content as string, sent: false }]
-                  };
-                });
-              }
+          const senderAddress = await resolveSender(message.groupTopic);
+          if (senderAddress) {
+            // Robust Content Decoding
+            let text = "";
+            if (typeof message.content === 'string') {
+              text = message.content;
+            } else if (message.content instanceof Uint8Array) {
+              text = new TextDecoder().decode(message.content);
+            } else {
+              console.warn("Received unknown message content type:", typeof message.content);
+              continue;
             }
-          } catch (e) {
-            console.error("Failed to resolve sender address for message:", e);
+
+            console.log(`Received message from ${senderAddress}:`, text);
+
+            setChatMessages(prev => {
+              const existing = prev[senderAddress] || [];
+              if (existing.some((m: any) => m.text === text && !m.sent)) return prev;
+              return {
+                ...prev,
+                [senderAddress]: [...existing, { text, sent: false }]
+              };
+            });
           }
         }
         
