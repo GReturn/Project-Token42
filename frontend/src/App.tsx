@@ -69,11 +69,8 @@ function App() {
   const [revealedUsers, setRevealedUsers] = useState<Set<string>>(new Set());
   const [dateEscrowStatus, setDateEscrowStatus] = useState<any>(null);
   const [isPoRLModalOpen, setIsPoRLModalOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<Record<string, { text: string; sent: boolean }[]>>({
-    "0x375ac89e80AE2169EC049B5780831A58bab5f7e3": [
-      { text: "Hi! I saw our match score was high. Want to chat about decentralized systems?", sent: true }
-    ]
-  });
+  const [isMatchLockModalOpen, setIsMatchLockModalOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Record<string, { text: string; sent: boolean }[]>>({});
   const [isConnecting, setIsConnecting] = useState(false);
   const [initialProfile, setInitialProfile] = useState<UserProfile | null>(null);
   const [showRecipientBio, setShowRecipientBio] = useState(false);
@@ -277,13 +274,7 @@ function App() {
     if (!address || !userCID) return;
     setLoading(true);
     try {
-      const potentialMatches = [
-        { 
-          address: "0x375ac89e80AE2169EC049B5780831A58bab5f7e3", 
-          cid: "QmX123...mock",
-          personalityBio: "I am a passionate explorer of decentralized systems and artificial intelligence. Looking for someone to build the future with."
-        },
-      ];
+      const potentialMatches: any[] = [];
 
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const messagingContract = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, provider);
