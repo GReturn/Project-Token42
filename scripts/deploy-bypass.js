@@ -39,7 +39,7 @@ async function main() {
         rUSDAddress = "0x0000000000000000000000000000000000000000"; 
     }
 
-    const aiAgentAddress = "0x375ac89e80AE2169EC049B5780831A58bab5f7e3";
+    const aiAgentAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
     console.log("Deploying Token42Profile...");
     const Token42Profile = await hre.ethers.getContractFactory("Token42Profile");
@@ -54,9 +54,18 @@ async function main() {
         const messagingAddress = await messaging.getAddress();
         console.log("Token42Messaging deployed to:", messagingAddress);
 
+        console.log("Deploying Token42Escrow...");
+        const Token42Escrow = await hre.ethers.getContractFactory("Token42Escrow");
+        const escrow = await Token42Escrow.deploy(rUSDAddress, profileAddress, gasOverrides);
+        await escrow.waitForDeployment();
+        const escrowAddress = await escrow.getAddress();
+        console.log("Token42Escrow deployed to:", escrowAddress);
+
         console.log("\n=== Deployment Complete ===");
         console.log("Token42Profile:", profileAddress);
         console.log("Token42Messaging:", messagingAddress);
+        console.log("Token42Escrow:", escrowAddress);
+        console.log("MockRUSD:", rUSDAddress);
     }
     
     main().catch((error) => {

@@ -58,4 +58,14 @@ contract MockRUSD {
         emit Transfer(from, to, amount);
         return true;
     }
+
+    /**
+     * @dev Faucet to get 100 rUSD for testing.
+     */
+    function faucet() external {
+        uint256 amount = 100 * 10 ** 18;
+        balanceOf[msg.sender] += amount;
+        totalSupply += amount;
+        emit Transfer(address(0), msg.sender, amount);
+    }
 }

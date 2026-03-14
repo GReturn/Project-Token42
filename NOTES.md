@@ -25,6 +25,7 @@ Imagine you're building a **dating app** — but instead of trusting a company l
 - **Your ID card is issued by a government office** (Polkadot People Chain) — not by the dating app itself.
 - **A sealed, tamper-proof matchmaker** (Phala TEE Agent) computes your compatibility score in a locked room — even the developers can't peek at the data.
 - **Sending a message costs a small deposit** (staked messaging) — like putting a dollar in a jar to prove you're serious. If you're respectful, the other person gets the dollar. If you're abusive, the app confiscates it.
+- **Meeting in person is backed by a "Safe Deposit"** (Date Escrow) — both parties lock up funds for a date. If both show up and verify, they get their money back. If one doesn't, the other is compensated.
 
 That's Token42 in a nutshell.
 
@@ -84,7 +85,11 @@ An ERC-20 token is a fungible (interchangeable) currency on the blockchain. One 
 
 **Analogy: Postage stamps.**
 
-Every transaction on a blockchain requires a small fee ("gas") paid to the network's validators — like putting a stamp on your certified letter. On the Paseo Testnet, gas is paid in **PAS** tokens, which are free test tokens (no real money).
+Every transaction on a blockchain requires a small fee ("gas") paid to the network's validators — like putting a stamp on your certified letter. On the Paseo Testnet, gas is paid in **PAS** tokens, which are free test tokens.
+
+### What is a Faucet?
+**Analogy: A free ATM for test money.**
+A faucet is a function or service that gives you free test tokens so you can use the app without searching for them. In Token42, we've added a faucet button in the profile section that gives you 100 rUSD instantly.
 
 ---
 

@@ -12,6 +12,7 @@
   "dependencies": {
     "@phala/sdk": "^0.5.10",
     "@polkadot/api": "^16.5.4",
+    "@xmtp/node-sdk": "^6.0.0",
     "axios": "^1.13.6",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
