@@ -1296,10 +1296,39 @@ body {
 
 /* ========== BLIND CHAT & REVEALS ========== */
 .blurred {
-  filter: blur(12px) !important;
-  transition: filter 0.5s ease;
+  filter: blur(16px) !important;
+  transition: all 0.5s ease;
   pointer-events: none;
   user-select: none;
+  opacity: 0.8;
+}
+
+.avatar-upload-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--accent);
+  margin-bottom: 1rem;
+}
+
+.avatar-placeholder {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px dashed var(--glass-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-bottom: 1rem;
+  transition: all 0.3s;
+}
+
+.avatar-placeholder:hover {
+  border-color: var(--accent);
+  background: rgba(0, 255, 204, 0.05);
 }
 
 .blurred-text {

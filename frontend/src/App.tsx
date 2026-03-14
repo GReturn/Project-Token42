@@ -2,12 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
 import { uploadToIPFS, fetchFromIPFS, UserProfile } from './utils/storage';
+import { STORAGE_CONFIG } from './config/storage';
 import { toast, Toaster } from 'react-hot-toast';
 import Navbar from './components/Navbar';
 import Loading from './components/Loading';
 import GlassCard from './components/GlassCard';
 import StatusBadge from './components/StatusBadge';
 import PoRLModal from './components/PoRLModal';
+import { compressImage, getCroppedImg } from './utils/images';
+import Cropper from 'react-easy-crop';
 
 // Contract Addresses (Paseo Asset Hub - PolkaVM)
 const PROFILE_CONTRACT_ADDRESS = "0xD7dD2d357A377beb0bbF89BfF0f0b36549e8476B";
@@ -74,6 +77,12 @@ function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [initialProfile, setInitialProfile] = useState<UserProfile | null>(null);
   const [showRecipientBio, setShowRecipientBio] = useState(false);
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
+  const [pendingAvatarBlob, setPendingAvatarBlob] = useState<Blob | null>(null);
+  const [localAvatarPreview, setLocalAvatarPreview] = useState<string | null>(null);
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const MAX_CHAT_CHARS = 500;
@@ -169,12 +178,62 @@ function App() {
     }
   };
 
+  const onCropComplete = (croppedArea: any, croppedAreaPixels: any) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+  };
+
+  const handleCropConfirm = async () => {
+    if (!imageToCrop || !croppedAreaPixels) return;
+    try {
+      setLoading(true);
+      const croppedBlob = await getCroppedImg(imageToCrop, croppedAreaPixels);
+      setPendingAvatarBlob(croppedBlob);
+      setLocalAvatarPreview(URL.createObjectURL(croppedBlob));
+      setImageToCrop(null);
+      toast.success("Image cropped! Save profile to store it permanently.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to crop image");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const createProfile = async () => {
     if (!address || !profile.bio) return toast.error("Please enter a bio");
     setLoading(true);
     try {
+      let finalAvatarCID = profile.avatar;
+
+      if (pendingAvatarBlob) {
+        toast.loading("Uploading image to IPFS...");
+        const formData = new FormData();
+        formData.append('file', pendingAvatarBlob, 'avatar.jpg');
+        
+        const pinataMetadata = JSON.stringify({
+          name: `Token42_Avatar_${address.slice(0, 6)}`,
+        });
+        formData.append('pinataMetadata', pinataMetadata);
+        
+        const options = JSON.stringify({ cidVersion: 0 });
+        formData.append('pinataOptions', options);
+
+        const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${STORAGE_CONFIG.PINATA_JWT}`,
+          },
+          body: formData,
+        });
+
+        if (!response.ok) throw new Error('Avatar upload failed');
+        const result = await response.json();
+        finalAvatarCID = result.IpfsHash;
+      }
+
       const metadata: UserProfile = {
         ...profile,
+        avatar: finalAvatarCID,
         timestamp: Date.now(),
         creator: address
       };
@@ -200,7 +259,10 @@ function App() {
       await tx.wait();
       
       setUserCID(cid);
+      setProfile(metadata);
       setInitialProfile(metadata);
+      setPendingAvatarBlob(null);
+      setLocalAvatarPreview(null);
       toast.success(userCID ? "Profile Updated!" : "Soulbound Profile Minted!");
       setStep('matching');
     } catch (error: any) {
@@ -239,7 +301,19 @@ function App() {
 
       const data = await response.json();
       if (data) {
-        setMatches([data]);
+        // Fetch full metadata for the match to get the avatar
+        try {
+          const metadata = await fetchFromIPFS(data.matchCid);
+          setMatches([{ 
+            ...data, 
+            avatar: metadata.avatar,
+            name: metadata.name,
+            bio: metadata.bio
+          }]);
+        } catch (e) {
+          console.error("Failed to fetch match metadata:", e);
+          setMatches([data]);
+        }
       } else {
         toast.error("No high-score matches found yet.");
       }
@@ -445,7 +519,8 @@ function App() {
 
       const hasChanges = !userCID || (
     profile.name !== initialProfile?.name || 
-    profile.bio !== initialProfile?.bio
+    profile.bio !== initialProfile?.bio ||
+    !!pendingAvatarBlob
   );
 
   return (
@@ -454,7 +529,10 @@ function App() {
         <Loading message={isConnecting ? "Connecting Wallet..." : "Processing Transaction..."} />
       )}
       <Toaster 
-        position="top-right"
+        position="bottom-center"
+        containerStyle={{
+          bottom: 80, // Offset to stay above the mobile bottom navbar
+        }}
         toastOptions={{
           className: 'glass-toast',
           style: {
@@ -559,6 +637,75 @@ function App() {
                 </p>
               </div>
               
+              <div className="input-group">
+                <label className="input-label">Profile Photo</label>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  {localAvatarPreview || profile.avatar ? (
+                    <img 
+                      src={localAvatarPreview || `https://gateway.pinata.cloud/ipfs/${profile.avatar}`} 
+                      className="avatar-upload-preview" 
+                      alt="Avatar Preview" 
+                      onClick={() => document.getElementById('avatar-input')?.click()}
+                    />
+                  ) : (
+                    <div className="avatar-placeholder" onClick={() => document.getElementById('avatar-input')?.click()}>
+                      <span style={{ fontSize: '2rem' }}>📸</span>
+                    </div>
+                  )}
+                  <input 
+                    type="file" 
+                    id="avatar-input" 
+                    hidden 
+                    accept="image/*" 
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.readAsDataURL(file);
+                      reader.onload = () => {
+                        setImageToCrop(reader.result as string);
+                      };
+                    }}
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tap to {profile.avatar || localAvatarPreview ? 'change' : 'upload'}</p>
+                </div>
+              </div>
+
+              {imageToCrop && (
+                <div className="modal-overlay">
+                  <GlassCard className="modal-content" style={{ height: '550px', display: 'flex', flexDirection: 'column' }}>
+                    <h3 style={{ marginBottom: '1rem' }}>Crop Profile Photo</h3>
+                    <div style={{ flex: 1, position: 'relative', width: '100%', background: '#000', borderRadius: '12px', overflow: 'hidden' }}>
+                      <Cropper
+                        image={imageToCrop}
+                        crop={crop}
+                        zoom={zoom}
+                        aspect={1}
+                        onCropChange={setCrop}
+                        onCropComplete={onCropComplete}
+                        onZoomChange={setZoom}
+                      />
+                    </div>
+                    <div style={{ padding: '1rem 0' }}>
+                      <label className="input-label" style={{ fontSize: '0.8rem' }}>Zoom</label>
+                      <input 
+                        type="range" 
+                        value={zoom} 
+                        min={1} 
+                        max={3} 
+                        step={0.1} 
+                        onChange={(e) => setZoom(Number(e.target.value))}
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                      <button className="text-btn" onClick={() => setImageToCrop(null)} style={{ flex: 1 }}>Cancel</button>
+                      <button className="primary-btn" onClick={handleCropConfirm} style={{ flex: 2 }}>Confirm Crop</button>
+                    </div>
+                  </GlassCard>
+                </div>
+              )}
+
               <div className="input-group">
                 <label className="input-label">Display Name</label>
                 <input 
@@ -672,7 +819,11 @@ function App() {
                   <GlassCard key={i} className="match-card animate-in">
                     <div className="match-card-body">
                       <div className={`match-avatar ${!revealedUsers.has(m.matchAddress.toLowerCase()) ? 'blurred' : ''}`}>
-                        {m.matchAddress ? m.matchAddress.slice(2, 4).toUpperCase() : '??'}
+                        {m.avatar ? (
+                          <img src={`https://gateway.pinata.cloud/ipfs/${m.avatar}`} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        ) : (
+                          m.matchAddress ? m.matchAddress.slice(2, 4).toUpperCase() : '??'
+                        )}
                       </div>
                       <div className="match-info">
                         <h3>{m.matchAddress.slice(0, 10)}...{m.matchAddress.slice(-6)}</h3>
@@ -759,7 +910,11 @@ function App() {
                     }}
                   >
                     <div className={`session-avatar ${!revealedUsers.has(addr.toLowerCase()) ? 'blurred' : ''}`}>
-                      {addr.slice(2, 4).toUpperCase()}
+                      {matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar ? (
+                        <img src={`https://gateway.pinata.cloud/ipfs/${matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar}`} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                      ) : (
+                        addr.slice(2, 4).toUpperCase()
+                      )}
                     </div>
                     <div className="session-info">
                       <div className="session-address">{addr.slice(0, 6)}...{addr.slice(-4)}</div>
@@ -823,14 +978,7 @@ function App() {
                   )}
 
                   <GlassCard className="chat-container" style={{ position: 'relative' }}>
-                    <div 
-                      className="chat-messages" 
-                      style={{ 
-                        filter: !revealedUsers.has(activeChat.toLowerCase()) 
-                          ? `blur(${Math.max(0, 12 - (chatMessages[activeChat]?.length || 0) * 0.8)}px)` 
-                          : 'none' 
-                      }}
-                    >
+                    <div className="chat-messages">
                     {(chatMessages[activeChat] || []).map((msg, i) => (
                       <div key={i} className={`chat-bubble ${msg.sent ? 'sent' : 'received'}`}>
                         {msg.text}
