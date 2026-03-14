@@ -34,6 +34,7 @@ contract Token42Messaging {
     IERC20 public immutable rUSD;
     IToken42Profile public immutable profileContract;
     address public owner;
+    address public treasury;
     
     mapping(address => bool) public isAdmin;
     mapping(address => uint256) public nonces;
@@ -99,6 +100,7 @@ contract Token42Messaging {
     event MinMatchScoreUpdated(uint256 newScore);
     event ProtocolFeeUpdated(uint256 newBps);
     event RevealAmountUpdated(uint256 newAmount);
+    event TreasuryUpdated(address indexed newTreasury);
 
     // --- Modifiers ---
     modifier onlyOwner() {
@@ -116,8 +118,15 @@ contract Token42Messaging {
         rUSD = IERC20(_rUSD);
         profileContract = IToken42Profile(_profileContract);
         owner = msg.sender;
+        treasury = msg.sender;
         isAdmin[_aiAgent] = true;
         isAdmin[msg.sender] = true;
+    }
+
+    function setTreasury(address _treasury) external onlyOwner {
+        if (_treasury == address(0)) revert InvalidAddress();
+        treasury = _treasury;
+        emit TreasuryUpdated(_treasury);
     }
 
     /**
@@ -236,7 +245,7 @@ contract Token42Messaging {
         uint256 recipientAmount = req.stake - fee;
 
         if (fee > 0) {
-            if (!rUSD.transfer(owner, fee)) revert ClaimTransferFailed();
+            if (!rUSD.transfer(treasury, fee)) revert ClaimTransferFailed();
         }
 
         if (!rUSD.transfer(msg.sender, recipientAmount)) {
@@ -254,7 +263,7 @@ contract Token42Messaging {
         if (!profileContract.hasProfile(msg.sender)) revert MissingProfile();
         if (!profileContract.hasProfile(recipient)) revert MissingProfile();
 
-        if (!rUSD.transferFrom(msg.sender, owner, revealAmount)) {
+        if (!rUSD.transferFrom(msg.sender, treasury, revealAmount)) {
             revert RevealTransferFailed();
         }
 
@@ -272,8 +281,8 @@ contract Token42Messaging {
         if (!req.active) revert NoActiveStake();
 
         req.active = false;
-        // Slashed stakes go to the owner (governance treasury)
-        if (!rUSD.transfer(owner, req.stake)) {
+        // Slashed stakes go to the treasury
+        if (!rUSD.transfer(treasury, req.stake)) {
             revert SlashTransferFailed();
         }
 

@@ -19,11 +19,17 @@ contract Token42Escrow {
     IERC20 public immutable rUSD;
     IToken42Profile public immutable profileContract;
     address public owner;
+    address public treasury;
 
     uint256 public escrowAmount = 10 * 10 ** 18; // 10 rUSD
     uint256 public dateWindow = 24 hours;
     uint256 public treasuryFeeBps = 500; // 5% for success
     uint256 public penaltyFeeBps = 2000; // 20% for no-shows
+
+    event TreasuryUpdated(address indexed newTreasury);
+    event DateWindowUpdated(uint256 newWindow);
+    event EscrowAmountUpdated(uint256 newAmount);
+    event FeesUpdated(uint256 treasuryFeeBps, uint256 penaltyFeeBps);
 
     enum EscrowStatus { None, Proposed, Active, Resolved, Slashed, Cancelled }
 
@@ -67,6 +73,30 @@ contract Token42Escrow {
         rUSD = IERC20(_rUSD);
         profileContract = IToken42Profile(_profileContract);
         owner = msg.sender;
+        treasury = msg.sender;
+    }
+
+    function setTreasury(address _treasury) external onlyOwner {
+        if (_treasury == address(0)) revert InvalidAddress();
+        treasury = _treasury;
+        emit TreasuryUpdated(_treasury);
+    }
+
+    function setDateWindow(uint256 _window) external onlyOwner {
+        dateWindow = _window;
+        emit DateWindowUpdated(_window);
+    }
+
+    function setEscrowAmount(uint256 _amount) external onlyOwner {
+        escrowAmount = _amount;
+        emit EscrowAmountUpdated(_amount);
+    }
+
+    function setFees(uint256 _treasuryFeeBps, uint256 _penaltyFeeBps) external onlyOwner {
+        if (_treasuryFeeBps > 2000 || _penaltyFeeBps > 5000) revert InvalidAddress();
+        treasuryFeeBps = _treasuryFeeBps;
+        penaltyFeeBps = _penaltyFeeBps;
+        emit FeesUpdated(_treasuryFeeBps, _penaltyFeeBps);
     }
 
     /**
@@ -177,7 +207,7 @@ contract Token42Escrow {
         uint256 fee = (totalPool * treasuryFeeBps) / 10000;
         uint256 returnAmount = (totalPool - fee) / 2;
 
-        rUSD.transfer(owner, fee);
+        rUSD.transfer(treasury, fee);
         rUSD.transfer(date.userA, returnAmount);
         rUSD.transfer(date.userB, returnAmount);
 
@@ -194,7 +224,7 @@ contract Token42Escrow {
         uint256 penalty = (flakerStake * penaltyFeeBps) / 10000;
         uint256 toWinner = winnerStake + (flakerStake - penalty);
 
-        rUSD.transfer(owner, penalty);
+        rUSD.transfer(treasury, penalty);
         rUSD.transfer(winner, toWinner);
 
         emit DateResolved(dateId, EscrowStatus.Slashed, penalty);
