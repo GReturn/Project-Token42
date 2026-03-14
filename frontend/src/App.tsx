@@ -370,8 +370,8 @@ function App() {
       const xmtpSigner = {
         type: 'EOA' as const,
         getIdentifier: async () => ({
-          identifier: await signer.getAddress(),
-          identifierKind: 0 as any // 0 = Ethereum/EVM
+          identifier: await signer.getAddress(), // Use standard checksummed address
+          identifierKind: 0 as any
         }),
         signMessage: async (message: string) => {
           const sig = await signer.signMessage(message);
@@ -426,10 +426,19 @@ function App() {
       console.log("🚀 Starting Static Revocation Flow...");
       const backend = await createBackend({ env: "dev" });
       
-      const inboxId = await getInboxIdForIdentifier(backend, {
+      // Dual-lookup strategy: Try with 0x prefix first, then without
+      let inboxId = await getInboxIdForIdentifier(backend, {
         identifier: walletAddress,
         identifierKind: 0
       });
+
+      if (!inboxId) {
+        console.log("Identity not found with 0x, trying raw hex...");
+        inboxId = await getInboxIdForIdentifier(backend, {
+          identifier: walletAddress.toLowerCase().replace('0x', ''),
+          identifierKind: 0
+        });
+      }
 
       if (!inboxId) {
         toast.error("No XMTP identity found on network.", { id: toastId });
@@ -949,7 +958,7 @@ function App() {
       // Send an automated greeting to initiate XMTP session
       if (xmtpClient) {
         try {
-          const conversation = await xmtpClient.conversations.createDm(recipient);
+          const conversation = await xmtpClient.conversations.createDm(recipient.toLowerCase().replace('0x', ''));
           await conversation.sync(); 
           const encoded = await encodeText("hi, I just staked a match credit to connect with you! 👋");
           await conversation.send(encoded);
@@ -1145,7 +1154,7 @@ function App() {
     if (xmtpClient) {
       console.log("Preparing to send XMTP V3 message to:", activeChat);
       try {
-        const conversation = await xmtpClient.conversations.createDm(activeChat);
+        const conversation = await xmtpClient.conversations.createDm(activeChat.toLowerCase().replace('0x', ''));
         await conversation.sync(); 
         const encoded = await encodeText(messageText);
         await conversation.send(encoded);
