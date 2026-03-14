@@ -1491,3 +1491,27 @@ body {
   transform: scale(1.05);
   box-shadow: 0 0 15px var(--primary-glow);
 }
+
+.primary-btn.connected-btn {
+  background: rgba(0, 255, 163, 0.08);
+  border: 1px solid rgba(0, 255, 163, 0.4);
+  color: var(--accent);
+  box-shadow: 0 0 10px rgba(0, 255, 163, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.primary-btn.connected-btn:hover {
+  background: rgba(0, 255, 163, 0.15);
+  border-color: var(--accent);
+  box-shadow: 
+    0 0 20px rgba(0, 255, 163, 0.4),
+    0 0 40px rgba(0, 255, 163, 0.1);
+  transform: translateY(-2px) scale(1.02);
+  color: #fff;
+}
+
+/* Pulse animation for high-value connections */
+.match-card:has(.connected-btn) {
+  border-color: rgba(0, 255, 163, 0.2);
+}
+
