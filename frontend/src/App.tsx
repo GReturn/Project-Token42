@@ -517,12 +517,15 @@ function App() {
         }, 15000);
 
         // Helper to resolve sender address from a group topic
-        const resolveSender = async (topic: string) => {
+        const resolveSender = async (groupOrTopic: any) => {
+          const topic = typeof groupOrTopic === 'string' ? groupOrTopic : groupOrTopic.topic;
           if (topicToAddress.current[topic]) return topicToAddress.current[topic];
           
           try {
-            const groups = await xmtpClient.conversations.list();
-            const group = groups.find((g: any) => g.topic === topic);
+            const group = typeof groupOrTopic === 'string' 
+              ? (await xmtpClient.conversations.list()).find((g: any) => g.topic === topic)
+              : groupOrTopic;
+
             if (group) {
               await group.sync();
               const members = await group.members();
@@ -590,16 +593,23 @@ function App() {
         for await (const message of stream) {
           if (message.senderInboxId === xmtpClient.inboxId) continue;
 
-          const senderAddress = await resolveSender(message.groupTopic);
+          // Optimization: Resolve sender using the message's group if available
+          const senderAddress = await resolveSender((message as any).group || message.groupTopic);
+          
           if (senderAddress) {
             // Robust Content Decoding
             let text = "";
-            if (typeof message.content === 'string') {
-              text = message.content;
-            } else if (message.content instanceof Uint8Array) {
-              text = new TextDecoder().decode(message.content);
+            const content = message.content;
+
+            if (typeof content === 'string') {
+              text = content;
+            } else if (content instanceof Uint8Array) {
+              text = new TextDecoder().decode(content);
+            } else if (content && typeof content === 'object') {
+              // Try to extract text from object (SDK decoded)
+              text = (content as any).text || (content as any).body || JSON.stringify(content);
             } else {
-              console.warn("Received unknown message content type:", typeof message.content);
+              console.warn("Received unknown message content type:", typeof content);
               continue;
             }
 
@@ -607,7 +617,8 @@ function App() {
 
             setChatMessages(prev => {
               const existing = prev[senderAddress] || [];
-              if (existing.some((m: any) => m.text === text && !m.sent)) return prev;
+              // Prevent duplicates if optimistic update already added it
+              if (existing.some((m: any) => m.text === text)) return prev;
               return {
                 ...prev,
                 [senderAddress]: [...existing, { text, sent: false }]
@@ -921,10 +932,8 @@ function App() {
       // Send an automated greeting to initiate XMTP session
       if (xmtpClient) {
         try {
-          // Some XMTP V3 environments fail if 0x is present in the createDm call
-          const cleanAddr = recipient.toLowerCase().replace('0x', '');
-          const conversation = await xmtpClient.conversations.createDm(cleanAddr);
-          await conversation.sync(); // Force sync to ensure local DB has sequence IDs
+          const conversation = await xmtpClient.conversations.createDm(recipient);
+          await conversation.sync(); 
           const encoded = await encodeText("hi, I just staked a match credit to connect with you! 👋");
           await conversation.send(encoded);
         } catch (e) {
@@ -1119,10 +1128,8 @@ function App() {
     if (xmtpClient) {
       console.log("Preparing to send XMTP V3 message to:", activeChat);
       try {
-        // Some XMTP V3 environments fail if 0x is present in the createDm call
-        const cleanAddr = activeChat.toLowerCase().replace('0x', '');
-        const conversation = await xmtpClient.conversations.createDm(cleanAddr);
-        await conversation.sync(); // Force sync to ensure local DB has sequence IDs
+        const conversation = await xmtpClient.conversations.createDm(activeChat);
+        await conversation.sync(); 
         const encoded = await encodeText(messageText);
         await conversation.send(encoded);
         console.log("✅ Message sent via XMTP V3 (MLS)");
