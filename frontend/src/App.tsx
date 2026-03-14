@@ -502,13 +502,16 @@ function App() {
   useEffect(() => {
     if (!xmtpClient) return;
 
-    let stream: any;
+    let isTerminated = false;
+    let syncInterval: any;
+
     const startStreaming = async () => {
       try {
         await xmtpClient.conversations.sync();
         console.log("✅ XMTP V3 initial sync complete.");
 
-        const syncInterval = setInterval(async () => {
+        syncInterval = setInterval(async () => {
+          if (isTerminated) return;
           try {
             await xmtpClient.conversations.sync();
           } catch (e) {
@@ -544,101 +547,115 @@ function App() {
 
         // 1. Stream Conversations (to detect NEW DMs)
         const runConvStream = async () => {
-          try {
-            const convStream = await xmtpClient.conversations.stream();
-            for await (const conversation of convStream) {
-              console.log("New conversation detected:", conversation.id);
-              await conversation.sync();
-              
-              const members = await conversation.members();
-              const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
-              if (otherMember && (otherMember as any).accountAddresses.length > 0) {
-                const partnerAddress = ethers.getAddress((otherMember as any).accountAddresses[0]);
-                topicToAddress.current[conversation.topic] = partnerAddress;
+          while (!isTerminated) {
+            try {
+              const convStream = await xmtpClient.conversations.stream();
+              console.log("Listening for new XMTP conversations...");
+              for await (const conversation of convStream) {
+                if (isTerminated) break;
+                console.log("New conversation detected:", conversation.id);
+                await conversation.sync();
                 
-                setChatMessages(prev => {
-                  if (prev[partnerAddress]) return prev;
-                  return { ...prev, [partnerAddress]: [] };
-                });
-                
-                // Trigger profile resolution
-                try {
-                  const provider = new ethers.BrowserProvider((window as any).ethereum);
-                  const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
-                  const cid = await profileContract.getProfileCID(partnerAddress);
-                  if (cid) {
-                    const metadata = await fetchFromIPFS(cid);
-                    setMatches(prev => {
-                      if (prev.some(m => m.matchAddress.toLowerCase() === partnerAddress.toLowerCase())) return prev;
-                      return [...prev, {
-                        matchAddress: partnerAddress,
-                        matchName: metadata.name,
-                        matchBio: metadata.bio,
-                        avatar: metadata.avatar,
-                        score: 10000
-                      }];
-                    });
-                  }
-                } catch (e) { console.warn("Failed to resolve profile for new conversation:", partnerAddress); }
+                const members = await conversation.members();
+                const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
+                if (otherMember && (otherMember as any).accountAddresses.length > 0) {
+                  const partnerAddress = ethers.getAddress((otherMember as any).accountAddresses[0]);
+                  topicToAddress.current[conversation.topic] = partnerAddress;
+                  
+                  setChatMessages(prev => {
+                    if (prev[partnerAddress]) return prev;
+                    return { ...prev, [partnerAddress]: [] };
+                  });
+                  
+                  // Trigger profile resolution
+                  try {
+                    const provider = new ethers.BrowserProvider((window as any).ethereum);
+                    const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
+                    const cid = await profileContract.getProfileCID(partnerAddress);
+                    if (cid) {
+                      const metadata = await fetchFromIPFS(cid);
+                      setMatches(prev => {
+                        if (prev.some(m => m.matchAddress.toLowerCase() === partnerAddress.toLowerCase())) return prev;
+                        return [...prev, {
+                          matchAddress: partnerAddress,
+                          matchName: metadata.name,
+                          matchBio: metadata.bio,
+                          avatar: metadata.avatar,
+                          score: 10000
+                        }];
+                      });
+                    }
+                  } catch (e) { console.warn("Failed to resolve profile for new conversation:", partnerAddress); }
+                }
               }
+            } catch (e) {
+              if (isTerminated) break;
+              console.warn("Conversation stream died, reconnecting...", e);
+              await new Promise(r => setTimeout(r, 3000));
             }
-          } catch (e) { console.error("Conversation stream error:", e); }
+          }
         };
         runConvStream();
 
         // 2. Stream Messages
-        stream = await xmtpClient.conversations.streamAllMessages();
-        console.log("Listening for XMTP V3 messages...");
-        
-        for await (const message of stream) {
-          if (message.senderInboxId === xmtpClient.inboxId) continue;
+        while (!isTerminated) {
+          try {
+            const messageStream = await xmtpClient.conversations.streamAllMessages();
+            console.log("Listening for XMTP V3 messages...");
+            
+            for await (const message of messageStream) {
+              if (isTerminated) break;
+              if (message.senderInboxId === xmtpClient.inboxId) continue;
 
-          // Optimization: Resolve sender using the message's group if available
-          const senderAddress = await resolveSender((message as any).group || message.groupTopic);
-          
-          if (senderAddress) {
-            // Robust Content Decoding
-            let text = "";
-            const content = message.content;
+              // Optimization: Resolve sender using the message's group if available
+              const senderAddress = await resolveSender((message as any).group || (message as any).topic || (message as any).groupTopic);
+              
+              if (senderAddress) {
+                // Robust Content Decoding
+                let text = "";
+                const content = message.content;
 
-            if (typeof content === 'string') {
-              text = content;
-            } else if (content instanceof Uint8Array) {
-              text = new TextDecoder().decode(content);
-            } else if (content && typeof content === 'object') {
-              // Try to extract text from object (SDK decoded)
-              text = (content as any).text || (content as any).body || JSON.stringify(content);
-            } else {
-              console.warn("Received unknown message content type:", typeof content);
-              continue;
+                if (typeof content === 'string') {
+                  text = content;
+                } else if (content instanceof Uint8Array) {
+                  text = new TextDecoder().decode(content);
+                } else if (content && typeof content === 'object') {
+                  // Try to extract text from object (SDK decoded)
+                  text = (content as any).text || (content as any).body || JSON.stringify(content);
+                } else {
+                  console.warn("Received unknown message content type:", typeof content);
+                  continue;
+                }
+
+                console.log(`Received message from ${senderAddress}:`, text);
+
+                setChatMessages(prev => {
+                  const existing = prev[senderAddress] || [];
+                  // Prevent duplicates if optimistic update already added it
+                  if (existing.some((m: any) => m.text === text)) return prev;
+                  return {
+                    ...prev,
+                    [senderAddress]: [...existing, { text, sent: false }]
+                  };
+                });
+              }
             }
-
-            console.log(`Received message from ${senderAddress}:`, text);
-
-            setChatMessages(prev => {
-              const existing = prev[senderAddress] || [];
-              // Prevent duplicates if optimistic update already added it
-              if (existing.some((m: any) => m.text === text)) return prev;
-              return {
-                ...prev,
-                [senderAddress]: [...existing, { text, sent: false }]
-              };
-            });
+          } catch (e) {
+            if (isTerminated) break;
+            console.warn("Message stream died, reconnecting...", e);
+            await new Promise(r => setTimeout(r, 3000));
           }
         }
-        
-        return () => clearInterval(syncInterval);
       } catch (err) {
-        console.error("XMTP Streaming error:", err);
+        if (!isTerminated) console.error("XMTP Streaming error:", err);
       }
     };
 
     startStreaming();
 
     return () => {
-      if (stream) {
-        stream.return?.();
-      }
+      isTerminated = true;
+      if (syncInterval) clearInterval(syncInterval);
     };
   }, [xmtpClient]);
 
