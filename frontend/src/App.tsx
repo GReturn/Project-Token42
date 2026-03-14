@@ -7,10 +7,12 @@ import Navbar from './components/Navbar';
 import Loading from './components/Loading';
 import GlassCard from './components/GlassCard';
 import StatusBadge from './components/StatusBadge';
+import PoRLModal from './components/PoRLModal';
 
 // Contract Addresses (Paseo Asset Hub - PolkaVM)
 const PROFILE_CONTRACT_ADDRESS = "0xD7dD2d357A377beb0bbF89BfF0f0b36549e8476B";
 const MESSAGING_CONTRACT_ADDRESS = "0x5f9b5ccAa4B13e23E41E9d3F9018963bE76f1347";
+const ESCROW_CONTRACT_ADDRESS = "0x...YOUR_ESCROW_ADDRESS_HERE..."; // Replace with deployed address
 const RUSD_CONTRACT_ADDRESS = "0x...YOUR_RUSD_ADDRESS_HERE...";
 
 const PROFILE_ABI = [
@@ -24,8 +26,17 @@ const MESSAGING_ABI = [
   "function stakeForMessage(address recipient, uint256 matchScore, bytes signature) public",
   "function claimStake(address sender) public",
   "function slashStake(address sender, address recipient) public",
+  "function burnForReveal(address recipient) public",
   "function nonces(address user) public view returns (uint256)",
-  "function matches(bytes32 matchId) public view returns (address sender, address recipient, uint256 stake, bool active)"
+  "function matches(bytes32 matchId) public view returns (address sender, address recipient, uint256 stake, bool active)",
+  "event RevealPurchased(address indexed sender, address indexed recipient, uint256 amount)"
+];
+
+const ESCROW_ABI = [
+  "function proposeDate(address recipient) public",
+  "function acceptDate(address proposer) public",
+  "function submitProof(address partner, bytes signature) public",
+  "function dates(bytes32 dateId) public view returns (address userA, address userB, uint256 startTime, uint256 amountA, uint256 amountB, bool proofA, bool proofB, uint8 status)"
 ];
 
 const ERC20_ABI = [
@@ -52,6 +63,9 @@ function App() {
   const [chatInput, setChatInput] = useState('');
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [isMobileSessionOpen, setIsMobileSessionOpen] = useState(false);
+  const [revealedUsers, setRevealedUsers] = useState<Set<string>>(new Set());
+  const [dateEscrowStatus, setDateEscrowStatus] = useState<any>(null);
+  const [isPoRLModalOpen, setIsPoRLModalOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Record<string, { text: string; sent: boolean }[]>>({
     "0x375ac89e80AE2169EC049B5780831A58bab5f7e3": [
       { text: "Hi! I saw our match score was high. Want to chat about decentralized systems?", sent: true }
@@ -269,6 +283,131 @@ function App() {
       setStep('chat');
     } catch (error: any) {
       console.error("Staking failed:", error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const burnForReveal = async (recipient: string) => {
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      
+      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
+      const approveTx = await rUSD.approve(MESSAGING_CONTRACT_ADDRESS, ethers.parseEther("5"));
+      await approveTx.wait();
+
+      const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, signer);
+      const tx = await messaging.burnForReveal(recipient);
+      setTxHash(tx.hash);
+      await tx.wait();
+
+      setRevealedUsers(prev => new Set(prev).add(recipient));
+      toast.success("High Intent Reveal Purchased!");
+    } catch (error: any) {
+      console.error("Reveal failed:", error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const proposeDate = async (partner: string) => {
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      
+      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
+      const approveTx = await rUSD.approve(ESCROW_CONTRACT_ADDRESS, ethers.parseEther("10"));
+      await approveTx.wait();
+
+      const escrow = new ethers.Contract(ESCROW_CONTRACT_ADDRESS, ESCROW_ABI, signer);
+      const tx = await escrow.proposeDate(partner);
+      setTxHash(tx.hash);
+      await tx.wait();
+
+      toast.success("Date Proposed & Stake Locked!");
+      checkDateStatus(partner);
+    } catch (error: any) {
+      console.error("Date proposal failed:", error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkDateStatus = async (partner: string) => {
+    if (!address) return;
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const escrow = new ethers.Contract(ESCROW_CONTRACT_ADDRESS, ESCROW_ABI, provider);
+      
+      const u1 = address.toLowerCase() < partner.toLowerCase() ? address : partner;
+      const u2 = address.toLowerCase() < partner.toLowerCase() ? partner : address;
+      const dateId = ethers.keccak256(ethers.solidityPacked(["address", "address"], [u1, u2]));
+      
+      const data = await escrow.dates(dateId);
+      setDateEscrowStatus({
+        id: dateId,
+        userA: data[0],
+        userB: data[1],
+        startTime: Number(data[2]),
+        amountA: data[3],
+        amountB: data[4],
+        proofA: data[5],
+        proofB: data[6],
+        status: Number(data[7])
+      });
+    } catch (e) {
+      console.error("Failed to check date status:", e);
+    }
+  };
+
+  const acceptDate = async () => {
+    if (!address || !dateEscrowStatus) return;
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+
+      const rUSD = new ethers.Contract(RUSD_CONTRACT_ADDRESS, ERC20_ABI, signer);
+      const approveTx = await rUSD.approve(ESCROW_CONTRACT_ADDRESS, ethers.parseEther("10"));
+      await approveTx.wait();
+
+      const escrow = new ethers.Contract(ESCROW_CONTRACT_ADDRESS, ESCROW_ABI, signer);
+      const tx = await escrow.acceptDate(dateEscrowStatus.userA);
+      setTxHash(tx.hash);
+      await tx.wait();
+
+      toast.success("Date Accepted!");
+      checkDateStatus(dateEscrowStatus.userA);
+    } catch (error: any) {
+      console.error("Accept date failed:", error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitDateProof = async (signature: string) => {
+    if (!activeChat || !dateEscrowStatus) return;
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const escrow = new ethers.Contract(ESCROW_CONTRACT_ADDRESS, ESCROW_ABI, signer);
+      
+      const tx = await escrow.submitProof(activeChat, signature);
+      setTxHash(tx.hash);
+      await tx.wait();
+
+      toast.success("Meeting Proof Submitted!");
+      checkDateStatus(activeChat);
+    } catch (error: any) {
+      console.error("Submit proof failed:", error);
       alert(`Error: ${error.message}`);
     } finally {
       setLoading(false);
@@ -532,7 +671,7 @@ function App() {
                 {matches.map((m, i) => (
                   <GlassCard key={i} className="match-card animate-in">
                     <div className="match-card-body">
-                      <div className="match-avatar">
+                      <div className={`match-avatar ${!revealedUsers.has(m.matchAddress.toLowerCase()) ? 'blurred' : ''}`}>
                         {m.matchAddress ? m.matchAddress.slice(2, 4).toUpperCase() : '??'}
                       </div>
                       <div className="match-info">
@@ -599,7 +738,7 @@ function App() {
                 <div className="mobile-session-selector">
                   {activeChat ? (
                     <div className="active-session-summary">
-                      <div className="session-avatar tiny">
+                      <div className={`session-avatar tiny ${!revealedUsers.has(activeChat.toLowerCase()) ? 'blurred' : ''}`}>
                         {activeChat.slice(2, 4).toUpperCase()}
                       </div>
                       <span>{activeChat.slice(0, 6)}...{activeChat.slice(-4)}</span>
@@ -619,7 +758,7 @@ function App() {
                       setIsMobileSessionOpen(false);
                     }}
                   >
-                    <div className="session-avatar">
+                    <div className={`session-avatar ${!revealedUsers.has(addr.toLowerCase()) ? 'blurred' : ''}`}>
                       {addr.slice(2, 4).toUpperCase()}
                     </div>
                     <div className="session-info">
@@ -658,6 +797,16 @@ function App() {
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="bio-icon"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                         <span className="bio-btn-text">{showRecipientBio ? 'Hide Bio' : 'View Bio'}</span>
                       </button>
+                      <button 
+                        className="text-btn" 
+                        onClick={() => {
+                          checkDateStatus(activeChat);
+                          setIsPoRLModalOpen(true);
+                        }}
+                        style={{ color: 'var(--accent)', marginRight: '8px' }}
+                      >
+                        🤝 Verify Date
+                      </button>
                       <StatusBadge status="verified" label="Staked" />
                     </div>
                   </div>
@@ -673,13 +822,32 @@ function App() {
                     </div>
                   )}
 
-                  <GlassCard className="chat-container">
-                    <div className="chat-messages">
+                  <GlassCard className="chat-container" style={{ position: 'relative' }}>
+                    <div 
+                      className="chat-messages" 
+                      style={{ 
+                        filter: !revealedUsers.has(activeChat.toLowerCase()) 
+                          ? `blur(${Math.max(0, 12 - (chatMessages[activeChat]?.length || 0) * 0.8)}px)` 
+                          : 'none' 
+                      }}
+                    >
                     {(chatMessages[activeChat] || []).map((msg, i) => (
                       <div key={i} className={`chat-bubble ${msg.sent ? 'sent' : 'received'}`}>
                         {msg.text}
                       </div>
                     ))}
+                    {/* Instant Reveal Button for Staked High Intent */}
+                    {!revealedUsers.has(activeChat.toLowerCase()) && (
+                      <div className="reveal-overlay-btn">
+                        <button 
+                          className="primary-btn" 
+                          style={{ width: 'auto', padding: '0.6rem 1.2rem', fontSize: '0.8rem' }}
+                          onClick={() => burnForReveal(activeChat)}
+                        >
+                          🔥 Burn 5 rUSD to Reveal Profile
+                        </button>
+                      </div>
+                    )}
                     {chatMessages[activeChat]?.length === 0 && (
                       <div className="empty-chat">
                         <p>No messages yet. Start the conversation!</p>
@@ -729,6 +897,17 @@ function App() {
         <footer className="app-footer">
           <p>Built on <a href="https://polkadot.network" target="_blank" rel="noopener">Polkadot Asset Hub</a> (Revive EVM) & Phala Network</p>
         </footer>
+      )}
+
+      {isPoRLModalOpen && activeChat && (
+        <PoRLModal 
+          address={address!}
+          partner={activeChat}
+          status={dateEscrowStatus}
+          onClose={() => setIsPoRLModalOpen(false)}
+          onAcceptDate={acceptDate}
+          onSubmitProof={submitDateProof}
+        />
       )}
     </div>
   );

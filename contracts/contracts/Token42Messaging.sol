@@ -41,6 +41,7 @@ contract Token42Messaging {
     uint256 public stakeAmount = 1 * 10 ** 18; // 1 rUSD
     uint256 public minMatchScore = 80;
     uint256 public protocolFeeBps = 1000; // 10% Protocol Fee
+    uint256 public revealAmount = 5 * 10 ** 18; // 5 rUSD to reveal
 
     struct MessageRequest {
         address sender;
@@ -66,6 +67,7 @@ contract Token42Messaging {
     error NotAnAdmin();
     error CannotRemoveOwner();
     error MissingProfile();
+    error RevealTransferFailed();
 
     // --- Events ---
     event MessageStaked(
@@ -86,11 +88,17 @@ contract Token42Messaging {
         address indexed reviewer,
         uint256 amount
     );
+    event RevealPurchased(
+        address indexed sender,
+        address indexed recipient,
+        uint256 amount
+    );
     event AdminAdded(address indexed account);
     event AdminRemoved(address indexed account);
     event StakeAmountUpdated(uint256 newAmount);
     event MinMatchScoreUpdated(uint256 newScore);
     event ProtocolFeeUpdated(uint256 newBps);
+    event RevealAmountUpdated(uint256 newAmount);
 
     // --- Modifiers ---
     modifier onlyOwner() {
@@ -138,6 +146,14 @@ contract Token42Messaging {
     function setStakeAmount(uint256 _amount) external onlyAdmin {
         stakeAmount = _amount;
         emit StakeAmountUpdated(_amount);
+    }
+
+    /**
+     * @dev Update the reveal amount.
+     */
+    function setRevealAmount(uint256 _amount) external onlyAdmin {
+        revealAmount = _amount;
+        emit RevealAmountUpdated(_amount);
     }
 
     /**
@@ -228,6 +244,21 @@ contract Token42Messaging {
         }
 
         emit MessageClaimed(msg.sender, sender, recipientAmount, fee);
+    }
+
+    /**
+     * @dev Purchase a reveal for a specific recipient. 
+     *      Signals high intent by burning/paying rUSD to the treasury.
+     */
+    function burnForReveal(address recipient) external {
+        if (!profileContract.hasProfile(msg.sender)) revert MissingProfile();
+        if (!profileContract.hasProfile(recipient)) revert MissingProfile();
+
+        if (!rUSD.transferFrom(msg.sender, owner, revealAmount)) {
+            revert RevealTransferFailed();
+        }
+
+        emit RevealPurchased(msg.sender, recipient, revealAmount);
     }
 
     /**
