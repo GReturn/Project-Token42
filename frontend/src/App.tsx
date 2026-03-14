@@ -370,8 +370,8 @@ function App() {
       const xmtpSigner = {
         type: 'EOA' as const,
         getIdentifier: async () => ({
-          identifier: await signer.getAddress(), // Use standard checksummed address
-          identifierKind: 0 as any
+          identifier: (await signer.getAddress()).toLowerCase().replace('0x', ''),
+          identifierKind: 0 as any 
         }),
         signMessage: async (message: string) => {
           const sig = await signer.signMessage(message);
@@ -410,32 +410,22 @@ function App() {
       const signer = await provider.getSigner();
       const walletAddress = await signer.getAddress();
 
-      const xmtpSigner = {
-        type: 'EOA' as const,
-        getIdentifier: async () => ({
-          identifier: walletAddress,
-          identifierKind: 0 as any
-        }),
-        signMessage: async (message: string) => {
-          const sig = await signer.signMessage(message);
-          return ethers.getBytes(sig);
-        }
-      };
-
       // v2 logic: use static methods that don't need a local DB instance
       console.log("🚀 Starting Static Revocation Flow...");
       const backend = await createBackend({ env: "dev" });
-      
+
       // Dual-lookup strategy: Try with 0x prefix first, then without
+      let usedAddress = walletAddress;
       let inboxId = await getInboxIdForIdentifier(backend, {
-        identifier: walletAddress,
+        identifier: usedAddress,
         identifierKind: 0
       });
 
       if (!inboxId) {
         console.log("Identity not found with 0x, trying raw hex...");
+        usedAddress = walletAddress.toLowerCase().replace('0x', '');
         inboxId = await getInboxIdForIdentifier(backend, {
-          identifier: walletAddress.toLowerCase().replace('0x', ''),
+          identifier: usedAddress,
           identifierKind: 0
         });
       }
@@ -444,6 +434,19 @@ function App() {
         toast.error("No XMTP identity found on network.", { id: toastId });
         return;
       }
+
+      // Re-initialize ephemeral signer with the detected address format
+      const xmtpSigner = {
+        type: 'EOA' as const,
+        getIdentifier: async () => ({
+          identifier: usedAddress,
+          identifierKind: 0 as any
+        }),
+        signMessage: async (message: string) => {
+          const sig = await signer.signMessage(message);
+          return ethers.getBytes(sig);
+        }
+      };
 
       console.log("Found Inbox ID:", inboxId);
       const states = await Client.fetchInboxStates([inboxId], backend);
