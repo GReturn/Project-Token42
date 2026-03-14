@@ -15,14 +15,15 @@ import Cropper from 'react-easy-crop';
 // Contract Addresses (Paseo Asset Hub - PolkaVM)
 const PROFILE_CONTRACT_ADDRESS = "0xD7dD2d357A377beb0bbF89BfF0f0b36549e8476B";
 const MESSAGING_CONTRACT_ADDRESS = "0x5f9b5ccAa4B13e23E41E9d3F9018963bE76f1347";
-const ESCROW_CONTRACT_ADDRESS = "0x...YOUR_ESCROW_ADDRESS_HERE..."; // Replace with deployed address
-const RUSD_CONTRACT_ADDRESS = "0x...YOUR_RUSD_ADDRESS_HERE...";
+const ESCROW_CONTRACT_ADDRESS = "0x...YOUR_ESCROW_ADDRESS_HERE..."; // Replace with deployed address if needed
+const RUSD_CONTRACT_ADDRESS = "0x454b00B17f45fe3Fa0d7B456742a1d48726FF593";
 
 const PROFILE_ABI = [
   "function mintProfile(string cid) public",
   "function updateProfile(string newCid) public",
   "function hasProfile(address user) public view returns (bool)",
-  "function getProfileCID(address user) public view returns (string)"
+  "function getProfileCID(address user) public view returns (string)",
+  "function ownerOf(uint256 tokenId) public view returns (address)"
 ];
 
 const MESSAGING_ABI = [
@@ -365,11 +366,43 @@ function App() {
 
   const findMatches = async () => {
     if (!address || !userCID) return;
+    const toastId = toast.loading("Discovering potential matches...");
     setLoading(true);
     try {
-      const potentialMatches: any[] = [];
-
       const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
+      
+      const potentialMatches: any[] = [];
+      let tokenId = 1;
+      let consecutiveErrors = 0;
+
+      // Discover profiles by iterating through token IDs
+      // We stop after 3 consecutive errors (presumably no more profiles)
+      while (consecutiveErrors < 3) {
+          try {
+              // We use a manual call to avoid the standard error handling if possible,
+              // or just accept that the try-catch will handle it.
+              const owner = await profileContract.ownerOf(tokenId);
+              if (owner.toLowerCase() !== address.toLowerCase()) {
+                  const cid = await profileContract.getProfileCID(owner);
+                  potentialMatches.push({ address: owner, cid });
+              }
+              consecutiveErrors = 0;
+          } catch (e: any) {
+              // Ignore "TokenDoesNotExist" or similar errors as they indicate end of list
+              consecutiveErrors++;
+          }
+          tokenId++;
+          if (tokenId > 50) break; // Reduced cap for faster local discovery
+      }
+
+      if (potentialMatches.length === 0) {
+        toast.error("No other profiles found to match with.", { id: toastId });
+        return;
+      }
+
+      toast.loading(`Analyzing ${potentialMatches.length} profiles...`, { id: toastId });
+      
       const messagingContract = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, provider);
       const nonce = await messagingContract.nonces(address);
 
@@ -383,11 +416,13 @@ function App() {
         })
       });
 
+      if (!response.ok) throw new Error("Agent failed to respond");
+
       const data = await response.json();
       if (data) {
         // Fetch full metadata for the match to get the avatar
         try {
-          const metadata = await fetchFromIPFS(data.matchCid);
+          const metadata = await fetchFromIPFS(data.matchCid || potentialMatches.find(m => m.address === data.matchAddress)?.cid);
           setMatches([{ 
             ...data, 
             avatar: metadata.avatar,
@@ -399,16 +434,18 @@ function App() {
             const url = await fetchImageFromIPFS(metadata.avatar);
             setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
           }
+          toast.success("Match found!", { id: toastId });
         } catch (e) {
           console.error("Failed to fetch match metadata:", e);
           setMatches([data]);
+          toast.success("Match found (metadata failed)!", { id: toastId });
         }
       } else {
-        toast.error("No high-score matches found yet.");
+        toast.error("No high-score matches found yet.", { id: toastId });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Matching failed:", error);
-      alert("Local AI Agent not responding. Is it running on port 3001?");
+      toast.error(`Matching failed: ${error.message || "Is the Agent running?"}`, { id: toastId });
     } finally {
       setLoading(false);
     }

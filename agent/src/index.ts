@@ -36,13 +36,15 @@ export class Token42Agent {
      */
     public async generateEmbedding(text: string): Promise<number[]> {
         try {
+            console.log(`Requesting embedding from Ollama for: "${text.slice(0, 50)}..."`);
             const response = await axios.post(this.ollamaUrl, {
                 model: 'llama3',
                 prompt: text
             });
+            console.log("✅ Embedding generated successfully.");
             return response.data.embedding;
         } catch (error) {
-            console.warn("Ollama connection failed, using mock embedding. Pull llama3 to fix!");
+            console.warn("❌ Ollama connection failed, using mock embedding. Pull llama3 to fix!");
             return Array(4096).fill(0).map(() => Math.random());
         }
     }
@@ -102,9 +104,11 @@ export class Token42Agent {
                 match.personalityBio = data.bio;
             }
             const matchVector = await this.generateEmbedding(match.personalityBio || "");
+            const score = this.calculateSimilarity(userVector, matchVector);
+            console.log(` - Profile ${match.address.slice(0, 8)}: Score ${(score * 100).toFixed(2)}%`);
             return {
                 address: match.address,
-                score: this.calculateSimilarity(userVector, matchVector)
+                score: score
             };
         });
 
