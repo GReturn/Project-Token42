@@ -171,10 +171,11 @@ npm run dev
 ## 🚀 Deployment Status (Paseo Asset Hub)
 
 The contracts are live on the **Paseo Asset Hub (Revive EVM)**:
-- **Token42Profile**: `0x6B9EB0Aaa10bC763C1d6c23C0dF1D59cAc458a44`
-- **Token42Messaging**: `0x0746242E447fAec6E2eAB20184631E65bf33be0d`
-- **Token42Escrow**: `0xA4094E6BfEf287E739FAfaE575cE338754cd8D1D`
-- **MockRUSD**: `0x6b6cFE04Ceba0d1B5a8297f4Aa20F1c831079Ec5` (with `faucet()` function)
+- **Token42Profile**: `0xd69bB168caD73DeB0007CdfB142D877e60be6CE7`
+- **Token42Messaging**: `0x4F61E1262201177827212835D77E36916ea36E94`
+- **Token42Escrow**: `0x62C5290a7456768E352faF34FdaD0DF3eAe07693`
+- **MockRUSD**: `0xf3A78E8d8AdD6DB2C567B7c51178300aa4663E90`
+ (with `faucet()` function)
 
 ---
 

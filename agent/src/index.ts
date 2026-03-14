@@ -3,6 +3,8 @@ import axios from 'axios';
 import express from 'express';
 import cors from 'cors';
 import * as dotenv from 'dotenv';
+import { Client, encodeText } from '@xmtp/node-sdk';
+import { Buffer } from 'buffer';
 
 dotenv.config();
 
@@ -21,6 +23,7 @@ interface UserProfile {
 export class Token42Agent {
     private agentWallet: ethers.Wallet;
     private ollamaUrl = 'http://localhost:11434/api/embeddings';
+    private xmtpClient: Client | null = null;
 
     constructor(privateKey: string) {
         this.agentWallet = new ethers.Wallet(privateKey);
@@ -29,6 +32,135 @@ export class Token42Agent {
 
     public getAddress(): string {
         return this.agentWallet.address;
+    }
+
+    public async initXMTP() {
+        try {
+            console.log("Initializing XMTP V3 client (MLS)...");
+            
+            // Wrap ethers wallet for XMTP V3 requirements
+            const xmtpSigner = {
+                type: 'EOA' as const,
+                getIdentifier: async () => ({
+                    identifier: this.agentWallet.address,
+                    identifierKind: 0 as any // 0 = Ethereum/EVM in V3 bindings
+                }),
+                getChainId: () => 420420417n, // Paseo Asset Hub
+                signMessage: async (message: string) => {
+                    const signature = await this.agentWallet.signMessage(message);
+                    return ethers.getBytes(signature);
+                }
+            };
+
+            const options: any = {
+                env: "dev",
+                dbPath: "./xmtp.db"
+            };
+
+            try {
+                this.xmtpClient = await Client.create(xmtpSigner as any, options);
+            } catch (error: any) {
+                const errorStr = String(error);
+                if (errorStr.includes("10/10 installations")) {
+                    console.warn("⚠️ XMTP installation limit reached (10/10). Attempting static revocation recovery...");
+                    try {
+                        const { createBackend, getInboxIdForIdentifier } = await import('@xmtp/node-sdk');
+                        const backend = await createBackend({ env: options.env });
+                        const inboxId = await getInboxIdForIdentifier(backend, {
+                            identifier: this.agentWallet.address,
+                            identifierKind: 0 as any
+                        });
+                        
+                        if (inboxId) {
+                            const states = await Client.fetchInboxStates([inboxId], backend);
+                            const installations = (states[0] as any)?.installations || [];
+                            if (installations.length > 0) {
+                                const idsToRevoke = installations.map((inst: any) => inst.bytes);
+                                await Client.revokeInstallations(xmtpSigner as any, inboxId, idsToRevoke, backend);
+                                console.log("✅ Static revocation successful. Retrying registration...");
+                            }
+                        }
+                        this.xmtpClient = await Client.create(xmtpSigner as any, options);
+                    } catch (recError) {
+                        console.error("❌ Static recovery failed:", recError);
+                        throw error; // Re-throw original error if recovery fails
+                    }
+                } else {
+                    throw error;
+                }
+            }
+            
+            console.log("✅ XMTP V3 client initialized. Inbox ID:", this.xmtpClient?.inboxId);
+
+            // Start listening for messages
+            this.startMessageListener();
+        } catch (error) {
+            console.error("❌ Failed to initialize XMTP V3 client:", error);
+        }
+    }
+
+    private async startMessageListener() {
+        if (!this.xmtpClient) return;
+
+        try {
+            console.log("📡 Agent starting to sync and listen for XMTP messages...");
+            
+            // Initial sync to find existing groups
+            await this.xmtpClient.conversations.sync();
+
+            // Stream new conversations (discovery)
+            const runConvStream = async () => {
+                try {
+                    const convStream = await this.xmtpClient!.conversations.stream();
+                    for await (const conversation of convStream) {
+                        console.log(`\n🆕 New conversation discovered: ${conversation.id}`);
+                        await conversation.sync();
+                    }
+                } catch (e) {
+                    console.error("❌ Agent conversation stream error:", e);
+                }
+            };
+            runConvStream();
+
+            // Periodic sync fallback (every 30s)
+            setInterval(async () => {
+                try {
+                    await this.xmtpClient!.conversations.sync();
+                } catch (e) {
+                    console.warn("⚠️ Agent background sync failed:", e);
+                }
+            }, 30000);
+
+            // Stream new messages from all groups
+            const stream = await this.xmtpClient.conversations.streamAllMessages();
+            for await (const message of stream) {
+                if (message.senderInboxId === this.xmtpClient.inboxId) continue;
+
+                console.log(`\n📩 New message from ${message.senderInboxId}:`);
+                console.log(` - Text: "${message.content}"`);
+            }
+        } catch (error) {
+            console.error("❌ XMTP Listener error:", error);
+        }
+    }
+
+    /**
+     * @dev Send a real-time notification via XMTP.
+     */
+    public async sendXMTPNotification(recipient: string, messageText: string) {
+        if (!this.xmtpClient) {
+            console.warn("⚠️ XMTP client not initialized. Skipping notification.");
+            return;
+        }
+
+        try {
+            // MLS groups create
+            const group = await this.xmtpClient.conversations.createGroup([recipient]);
+            await group.send(encodeText(messageText)); // V3 expects an EncodedContent
+            console.log(`✅ XMTP V3 notification sent to ${recipient}`);
+        } catch (error) {
+            console.error(`❌ Failed to send XMTP V3 notification to ${recipient}:`, error);
+        }
     }
 
     /**
@@ -63,11 +195,15 @@ export class Token42Agent {
     }
 
     public async signMatch(userA: string, userB: string, score: number, nonce: number): Promise<string> {
-        const scoreBps = Math.floor(score * 100);
+        const scoreBps = Math.floor(score * 10000);
         const messageHash = ethers.solidityPackedKeccak256(
             ['address', 'address', 'uint256', 'uint256'],
             [userA, userB, scoreBps, nonce]
         );
+        console.log(`Matching ${userA} <-> ${userB}`);
+        console.log(` - Score BPS: ${scoreBps}`);
+        console.log(` - Nonce: ${nonce}`);
+        console.log(` - Hash: ${messageHash}`);
         return await this.agentWallet.signMessage(ethers.getBytes(messageHash));
     }
 
@@ -119,9 +255,14 @@ export class Token42Agent {
         if (topMatch && topMatch.score > 0.8) {
             console.log(`Top match: ${topMatch.address} (${(topMatch.score * 100).toFixed(2)}%)`);
             const signature = await this.signMatch(currentUser.address, topMatch.address, topMatch.score, nonce);
+
+            // Notify both users via XMTP
+            await this.sendXMTPNotification(currentUser.address, `🎉 You've been matched with ${topMatch.address.slice(0, 8)}! Open the app to stake and start chatting.`);
+            await this.sendXMTPNotification(topMatch.address, `🎉 A new user (${currentUser.address.slice(0, 8)}) is a great match for you! Check your discovery tab.`);
+
             return {
                 matchAddress: topMatch.address,
-                score: Math.floor(topMatch.score * 100),
+                score: Math.floor(topMatch.score * 10000),
                 signature: signature
             };
         }
@@ -156,17 +297,17 @@ app.post('/match', async (req, res) => {
 });
 
 app.post('/slash', async (req, res) => {
-    // This endpoint would normally be triggered by an AI moderation component 
-    // that analyzes chat logs. For testing, we expose it to the developer.
     const { sender, recipient } = req.body;
     console.log(`Moderation Alert: Slashing ${sender} for reported harassment against ${recipient}`);
-    // In a real TEE, the agent would call the contract directly. 
-    // Here we just acknowledge the intent.
     res.json({ status: "Slashed", sender, recipient });
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-    console.log(`\n🚀 Token42 AI Agent Server running on http://localhost:${PORT}`);
+app.listen(PORT, async () => {
+    console.log(`\n🚀 Token42 AI Agent Server starting on http://localhost:${PORT}`);
+    await agent.initXMTP();
     console.log(`Agent Address: ${agent.getAddress()}`);
+    console.log("-----------------------------------------");
+    console.log("✅ AGENT IS ONLINE AND READY TO MATCH");
+    console.log("-----------------------------------------");
 });

@@ -1,0 +1,19 @@
+﻿Starting deployment...
+USE_MOCKS = true
+Overriding gas fees... maxPriority: 2000000000
+Deploying MockIdentityPrecompile...
+MockIdentityPrecompile deployed to: 0x3adD0f766fFcc556B0DDb193841186eEe1c53FE5
+Deploying MockRUSD...
+MockRUSD deployed to: 0xf3A78E8d8AdD6DB2C567B7c51178300aa4663E90
+Deploying Token42Profile...
+Token42Profile deployed to: 0xd69bB168caD73DeB0007CdfB142D877e60be6CE7
+Deploying Token42Messaging...
+Token42Messaging deployed to: 0x4F61E1262201177827212835D77E36916ea36E94
+Deploying Token42Escrow...
+Token42Escrow deployed to: 0x62C5290a7456768E352faF34FdaD0DF3eAe07693
+
+=== Deployment Complete ===
+Token42Profile: 0xd69bB168caD73DeB0007CdfB142D877e60be6CE7
+Token42Messaging: 0x4F61E1262201177827212835D77E36916ea36E94
+Token42Escrow: 0x62C5290a7456768E352faF34FdaD0DF3eAe07693
+MockRUSD: 0xf3A78E8d8AdD6DB2C567B7c51178300aa4663E90

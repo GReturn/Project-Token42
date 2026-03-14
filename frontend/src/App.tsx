@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { ethers } from 'ethers';
+import { Client, encodeText } from '@xmtp/browser-sdk';
 import { uploadToIPFS, fetchFromIPFS, fetchImageFromIPFS, UserProfile } from './utils/storage';
 import { STORAGE_CONFIG } from './config/storage';
 import { toast, Toaster } from 'react-hot-toast';
@@ -13,10 +14,10 @@ import { compressImage, getCroppedImg } from './utils/images';
 import Cropper from 'react-easy-crop';
 
 // Contract Addresses (Paseo Asset Hub - PolkaVM)
-const PROFILE_CONTRACT_ADDRESS = "0x6B9EB0Aaa10bC763C1d6c23C0dF1D59cAc458a44";
-const MESSAGING_CONTRACT_ADDRESS = "0x0746242E447fAec6E2eAB20184631E65bf33be0d";
-const ESCROW_CONTRACT_ADDRESS = "0xA4094E6BfEf287E739FAfaE575cE338754cd8D1D";
-const RUSD_CONTRACT_ADDRESS = "0x6b6cFE04Ceba0d1B5a8297f4Aa20F1c831079Ec5";
+const PROFILE_CONTRACT_ADDRESS = "0xd69bB168caD73DeB0007CdfB142D877e60be6CE7";
+const MESSAGING_CONTRACT_ADDRESS = "0x4F61E1262201177827212835D77E36916ea36E94";
+const ESCROW_CONTRACT_ADDRESS = "0x62C5290a7456768E352faF34FdaD0DF3eAe07693";
+const RUSD_CONTRACT_ADDRESS = "0xf3A78E8d8AdD6DB2C567B7c51178300aa4663E90";
 
 const PROFILE_ABI = [
   "function mintProfile(string cid) public",
@@ -33,7 +34,8 @@ const MESSAGING_ABI = [
   "function burnForReveal(address recipient) public",
   "function nonces(address user) public view returns (uint256)",
   "function matches(bytes32 matchId) public view returns (address sender, address recipient, uint256 stake, bool active)",
-  "event RevealPurchased(address indexed sender, address indexed recipient, uint256 amount)"
+  "event RevealPurchased(address indexed sender, address indexed recipient, uint256 amount)",
+  "event MessageStaked(address indexed sender, address indexed recipient, uint256 amount, uint256 nonce)"
 ];
 
 const ESCROW_ABI = [
@@ -75,6 +77,8 @@ function App() {
   const [chatMessages, setChatMessages] = useState<Record<string, { text: string; sent: boolean }[]>>({});
   const [isConnecting, setIsConnecting] = useState(false);
   const [initialProfile, setInitialProfile] = useState<UserProfile | null>(null);
+  const [xmtpClient, setXmtpClient] = useState<Client | null>(null);
+  const [isXmtpLoading, setIsXmtpLoading] = useState(false);
   const [showRecipientBio, setShowRecipientBio] = useState(false);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -155,6 +159,65 @@ function App() {
           }
         });
       } catch (e) { console.error("Failed to load saved chats", e); }
+    }
+
+    // Recover on-chain stakes
+    await recoverLegacyStakes();
+  };
+
+  const recoverLegacyStakes = async () => {
+    if (!address) return;
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, provider);
+      
+      const filter = messaging.filters.MessageStaked(address);
+      const events = await messaging.queryFilter(filter, 0);
+
+      if (events.length > 0) {
+        console.log(`Found ${events.length} legacy on-chain stakes.`);
+        const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
+        
+        const newChats: Record<string, any[]> = { ...chatMessages };
+        let changed = false;
+
+        for (const event of events) {
+          if ('args' in event) {
+            const recipient = event.args.recipient;
+            if (!newChats[recipient]) {
+              console.log("Restoring session for:", recipient);
+              newChats[recipient] = [];
+              changed = true;
+              
+              try {
+                const cid = await profileContract.getProfileCID(recipient);
+                if (cid) {
+                  const metadata = await fetchFromIPFS(cid);
+                  if (metadata.avatar) {
+                    const url = await fetchImageFromIPFS(metadata.avatar);
+                    setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
+                  }
+                  setMatches(prev => {
+                    if (prev.some(m => m.matchAddress.toLowerCase() === recipient.toLowerCase())) return prev;
+                    return [...prev, {
+                      matchAddress: recipient,
+                      matchBio: metadata.bio,
+                      matchName: metadata.name,
+                      avatar: metadata.avatar,
+                      score: 10000 
+                    }];
+                  });
+                }
+              } catch (e) {
+                console.warn("Match metadata restoration failed for", recipient);
+              }
+            }
+          }
+        }
+        if (changed) setChatMessages(newChats);
+      }
+    } catch (e) {
+      console.error("Legacy stake recovery failed:", e);
     }
   };
 
@@ -247,6 +310,119 @@ function App() {
       alert("Please install SubWallet or MetaMask!");
     }
   };
+
+  const initXMTP = async () => {
+    if (!address || xmtpClient) return;
+    setIsXmtpLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      
+      console.log("Initializing XMTP V3 client...");
+      
+      // Wrap Ethers signer for XMTP V3
+      const xmtpSigner = {
+        type: 'EOA' as const,
+        getIdentifier: async () => ({
+          identifier: await signer.getAddress(),
+          identifierKind: 0 as any // 0 = Ethereum/EVM
+        }),
+        signMessage: async (message: string) => {
+          const sig = await signer.signMessage(message);
+          return ethers.getBytes(sig);
+        }
+      };
+
+      const client = await Client.create(xmtpSigner as any, { 
+        env: "dev"
+      } as any);
+      setXmtpClient(client);
+      console.log("✅ XMTP V3 initialized. Inbox ID:", client.inboxId);
+      toast.success("Real-time messaging active!");
+    } catch (error: any) {
+      console.error("XMTP V3 initialization failed:", error);
+      toast.error("Failed to enable real-time messaging");
+    } finally {
+      setIsXmtpLoading(false);
+    }
+  };
+
+  // Trigger XMTP init when address is set
+  useEffect(() => {
+    if (address && !xmtpClient) {
+      initXMTP();
+    }
+  }, [address]);
+
+  // Stream XMTP messages
+  useEffect(() => {
+    if (!xmtpClient) return;
+
+    let stream: any;
+    const startStreaming = async () => {
+      try {
+        // Initial sync of existing conversations
+        await xmtpClient.conversations.sync();
+        console.log("✅ XMTP V3 initial sync complete.");
+
+        // Periodic sync in background (every 15s) to find new groups/DMs
+        const syncInterval = setInterval(async () => {
+          try {
+            await xmtpClient.conversations.sync();
+          } catch (e) {
+            console.warn("Background sync failed:", e);
+          }
+        }, 15000);
+
+        // Stream new conversations (discovery)
+        const runConvStream = async () => {
+          try {
+            const convStream = await xmtpClient.conversations.stream();
+            for await (const conversation of convStream) {
+              console.log("New XMTP conversation discovered:", conversation.id);
+              await conversation.sync();
+            }
+          } catch (e) {
+            console.error("Conversation stream error:", e);
+          }
+        };
+        runConvStream();
+
+        // Stream all messages
+        stream = await xmtpClient.conversations.streamAllMessages();
+        console.log("Listening for XMTP V3 messages...");
+        
+        for await (const message of stream) {
+          if (message.senderInboxId === xmtpClient.inboxId) continue;
+
+          console.log("New XMTP V3 message received:", message.content);
+          
+          setChatMessages(prev => {
+            const sender = activeChat?.toLowerCase() || message.senderInboxId;
+            const existing = prev[sender] || [];
+            if (existing.some((m: any) => m.text === message.content && !m.sent)) return prev;
+            
+            return {
+              ...prev,
+              [sender]: [...existing, { text: message.content as string, sent: false }]
+            };
+          });
+        }
+        
+        return () => clearInterval(syncInterval);
+      } catch (err) {
+        console.error("XMTP Streaming error:", err);
+      }
+    };
+
+    startStreaming();
+
+    return () => {
+      if (stream) {
+        stream.return?.();
+      }
+    };
+  }, [xmtpClient, activeChat]);
 
   const onCropComplete = (croppedArea: any, croppedAreaPixels: any) => {
     setCroppedAreaPixels(croppedAreaPixels);
@@ -384,9 +560,13 @@ function App() {
               // We use a manual call to avoid the standard error handling if possible,
               // or just accept that the try-catch will handle it.
               const owner = await profileContract.ownerOf(tokenId);
-              if (owner.toLowerCase() !== address.toLowerCase()) {
-                  const cid = await profileContract.getProfileCID(owner);
-                  potentialMatches.push({ address: owner, cid });
+              const ownerAddr = owner.toLowerCase();
+              if (ownerAddr !== address.toLowerCase()) {
+                  // Filter out already staked recipients (those we already have a session with)
+                  if (!chatMessages[ownerAddr]) {
+                      const cid = await profileContract.getProfileCID(owner);
+                      potentialMatches.push({ address: owner, cid });
+                  }
               }
               consecutiveErrors = 0;
           } catch (e: any) {
@@ -633,17 +813,35 @@ function App() {
     }
   };
 
-  const sendChat = () => {
+  const sendChat = async () => {
     if (!chatInput.trim() || !activeChat) return;
     
+    const messageText = chatInput;
+    
+    // Optimistic Update
     setChatMessages(prev => ({
       ...prev,
-      [activeChat]: [...(prev[activeChat] || []), { text: chatInput, sent: true }]
+      [activeChat]: [...(prev[activeChat] || []), { text: messageText, sent: true }]
     }));
     
     setChatInput('');
     if (chatTextareaRef.current) {
       chatTextareaRef.current.style.height = 'auto';
+    }
+
+    // Send via XMTP if available
+    if (xmtpClient) {
+      console.log("Preparing to send XMTP V3 message to:", activeChat);
+      try {
+        // Lowercase address to be safe with V3 lookups
+        const conversation = await xmtpClient.conversations.createDm(activeChat.toLowerCase());
+        const encoded = await encodeText(messageText);
+        await conversation.send(encoded);
+        console.log("✅ Message sent via XMTP V3 (MLS)");
+      } catch (error) {
+        console.error("❌ Failed to send message via XMTP V3:", error);
+        toast.error("Real-time delivery failed");
+      }
     }
   };
 
@@ -997,10 +1195,10 @@ function App() {
                         <svg viewBox="0 0 36 36">
                           <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3" />
                           <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--accent)" strokeWidth="3" 
-                            strokeDasharray={`${(m.score / 100) * 97.4} 97.4`}
+                            strokeDasharray={`${(m.score / 10000) * 97.4} 97.4`}
                             strokeLinecap="round" />
                         </svg>
-                        <span className="score-text">{m.score}%</span>
+                        <span className="score-text">{(m.score / 100).toFixed(1)}%</span>
                       </div>
                     </div>
                     <div className="match-actions">
