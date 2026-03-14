@@ -14,10 +14,10 @@ import { compressImage, getCroppedImg } from './utils/images';
 import Cropper from 'react-easy-crop';
 
 // Contract Addresses (Paseo Asset Hub - PolkaVM)
-const PROFILE_CONTRACT_ADDRESS = "0xd69bB168caD73DeB0007CdfB142D877e60be6CE7";
-const MESSAGING_CONTRACT_ADDRESS = "0x4F61E1262201177827212835D77E36916ea36E94";
-const ESCROW_CONTRACT_ADDRESS = "0x62C5290a7456768E352faF34FdaD0DF3eAe07693";
-const RUSD_CONTRACT_ADDRESS = "0xf3A78E8d8AdD6DB2C567B7c51178300aa4663E90";
+const PROFILE_CONTRACT_ADDRESS = "0x9B9f7569A535Cd2B66EC9B2F5509F5e688Ba92B5";
+const MESSAGING_CONTRACT_ADDRESS = "0x8B8d13a7f678FA8f6793290Ee9e46302Be427453";
+const ESCROW_CONTRACT_ADDRESS = "0xb6B64176CC8a8350AB84D466CD4bf111C3A6E7a5";
+const RUSD_CONTRACT_ADDRESS = "0xFE4eae5d84412B70b1f04b3F78351a654D28Da25";
 
 const PROFILE_ABI = [
   "function mintProfile(string cid) public",
@@ -83,6 +83,7 @@ function App() {
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  const [hasActiveStake, setHasActiveStake] = useState(false);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
   const [pendingAvatarBlob, setPendingAvatarBlob] = useState<Blob | null>(null);
   const [localAvatarPreview, setLocalAvatarPreview] = useState<string | null>(null);
@@ -424,6 +425,30 @@ function App() {
     };
   }, [xmtpClient, activeChat]);
 
+  // Check stake status when active chat changes
+  useEffect(() => {
+    if (activeChat && address) {
+      checkStakeStatus(activeChat);
+    }
+  }, [activeChat, address]);
+
+  const checkStakeStatus = async (partner: string) => {
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, provider);
+      
+      // matchId = keccak256(abi.encodePacked(sender, recipient))
+      // In this case, we are the recipient, and partner is the sender
+      const matchId = ethers.keccak256(ethers.solidityPacked(["address", "address"], [partner, address]));
+      const stakeInfo = await messaging.matches(matchId);
+      
+      setHasActiveStake(stakeInfo.active && stakeInfo.recipient.toLowerCase() === address?.toLowerCase());
+    } catch (e) {
+      console.error("Failed to check stake status:", e);
+      setHasActiveStake(false);
+    }
+  };
+
   const onCropComplete = (croppedArea: any, croppedAreaPixels: any) => {
     setCroppedAreaPixels(croppedAreaPixels);
   };
@@ -665,6 +690,29 @@ function App() {
     } catch (error: any) {
       console.error("Staking failed:", error);
       alert(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const claimStake = async () => {
+    if (!activeChat || !address) return;
+    const toastId = toast.loading("Claiming stake...");
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const messaging = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, signer);
+      
+      const tx = await messaging.claimStake(activeChat);
+      setTxHash(tx.hash);
+      await tx.wait();
+      
+      toast.success("Stake claimed successfully!", { id: toastId });
+      setHasActiveStake(false);
+    } catch (error: any) {
+      console.error("Claim stake failed:", error);
+      toast.error(`Claim failed: ${error.message || "Unknown error"}`, { id: toastId });
     } finally {
       setLoading(false);
     }
@@ -1336,6 +1384,16 @@ function App() {
                       >
                         🤝 Verify Date
                       </button>
+                      {hasActiveStake && (
+                        <button 
+                          className="primary-btn" 
+                          onClick={claimStake}
+                          style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.85rem', background: 'var(--accent)', color: '#000' }}
+                          disabled={loading}
+                        >
+                          {loading ? "Claiming..." : "🎁 Claim Reward"}
+                        </button>
+                      )}
                       <StatusBadge status="verified" label="Staked" />
                     </div>
                   </div>

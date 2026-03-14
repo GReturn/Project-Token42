@@ -22,7 +22,7 @@ interface UserProfile {
  */
 export class Token42Agent {
     private agentWallet: ethers.Wallet;
-    private ollamaUrl = 'http://localhost:11434/api/embeddings';
+    private ollamaUrl = 'http://localhost:11434/api/embed';
     private xmtpClient: Client | null = null;
 
     constructor(privateKey: string) {
@@ -171,10 +171,11 @@ export class Token42Agent {
             console.log(`Requesting embedding from Ollama for: "${text.slice(0, 50)}..."`);
             const response = await axios.post(this.ollamaUrl, {
                 model: 'llama3',
-                prompt: text
+                input: text
             });
             console.log("✅ Embedding generated successfully.");
-            return response.data.embedding;
+            // Ollama /api/embed returns an array of embeddings
+            return response.data.embeddings[0];
         } catch (error) {
             console.warn("❌ Ollama connection failed, using mock embedding. Pull llama3 to fix!");
             return Array(4096).fill(0).map(() => Math.random());
