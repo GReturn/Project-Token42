@@ -306,6 +306,30 @@ function App() {
           }
         }
         if (changed) setChatMessages(newChats);
+
+        // --- ADD REVEALPURCHASED RECOVERY ---
+        try {
+          const revealFilter = messaging.filters.RevealPurchased();
+          const revealEvents = await messaging.queryFilter(revealFilter, -5000);
+          
+          const relevantReveals = revealEvents.filter((event: any) => {
+            if (!event.args) return false;
+            return event.args.sender.toLowerCase() === address.toLowerCase();
+          });
+          
+          if (relevantReveals.length > 0) {
+            console.log(`Found ${relevantReveals.length} relevant on-chain reveals.`);
+            setRevealedUsers(prev => {
+              const updated = new Set(prev);
+              relevantReveals.forEach((event: any) => {
+                updated.add(event.args.recipient.toLowerCase());
+              });
+              return updated;
+            });
+          }
+        } catch (err) {
+          console.error("Failed to recover reveals:", err);
+        }
       }
     } catch (e) {
       console.error("Legacy stake recovery failed:", e);
@@ -1032,6 +1056,8 @@ function App() {
       const data = await response.json();
       if (data.status === "Slashed") {
         toast.success("User reported. AI has verified violation and triggered slash.", { id: toastId, duration: 5000 });
+      } else if (data.status === "Safe") {
+        toast.success("AI evaluated chat: No policy violations found.", { id: toastId });
       } else {
         toast.success("Report submitted for review.", { id: toastId });
       }
@@ -1385,7 +1411,7 @@ function App() {
       setTxHash(tx.hash);
       await tx.wait();
 
-      setRevealedUsers(prev => new Set(prev).add(recipient));
+      setRevealedUsers(prev => new Set(prev).add(recipient.toLowerCase()));
       toast.success("High Intent Reveal Purchased!");
     } catch (error: any) {
       console.error("Reveal failed:", error);
