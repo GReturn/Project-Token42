@@ -729,6 +729,54 @@ function App() {
                     console.log(`Syncing group ${conv.id.substring(0, 8)}...`);
                     await conv.sync();
                     console.log(`Group ${conv.id.substring(0, 8)} synced.`);
+
+                    // Fetch historical messages from group
+                    try {
+                      const messages = await conv.messages();
+                      // Decode and format messages
+                      const formatted = messages.map((m: any) => {
+                        let text = "";
+                        const content = m.content;
+
+                        // Skip Administrative Group Lifecycle/Membership Messages
+                        if (content && typeof content === 'object' && (content as any).initiatedByInboxId) {
+                          return null;
+                        }
+
+                        if (typeof content === 'string') text = content;
+                        else if (content instanceof Uint8Array) text = new TextDecoder().decode(content);
+                        else if (content && typeof content === 'object') text = (content as any).text || (content as any).body || JSON.stringify(content);
+
+                        return {
+                          text,
+                          sent: m.senderInboxId === xmtpClient.inboxId, // true if user sent it
+                          timestamp: m.sentAt ? m.sentAt : undefined
+                        };
+                      }).filter((m: any) => m && m.text).reverse();
+
+                      if (formatted.length > 0) {
+                        console.log(`Loaded ${formatted.length} historical messages for ${partnerAddress}`);
+                        setChatMessages(prev => {
+                          const existing = prev[partnerAddress] || [];
+                          const newMessages = (formatted as any[]).filter((m: any) => m && !existing.some((e: any) => e.text === m.text));
+                          const combined = [...existing, ...newMessages];
+                          
+                          // Explicit sort by timestamp (Ascending order)
+                          combined.sort((a: any, b: any) => {
+                            const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+                            const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+                            return tA - tB;
+                          });
+
+                          return {
+                            ...prev,
+                            [partnerAddress]: combined
+                          };
+                        });
+                      }
+                    } catch (msgError) {
+                      console.warn(`Failed to load historical messages for ${partnerAddress}:`, msgError);
+                    }
                   } catch (syncErr) {
                     console.warn(`Sync failed for group ${conv.id.substring(0, 8)}, skipping messages for now.`, syncErr);
                   }
@@ -890,7 +938,11 @@ function App() {
                   if (existing.some((m: any) => m.text === text)) return prev;
                   return {
                     ...prev,
-                    [senderAddress]: [...existing, { text, sent: false }]
+                    [senderAddress]: [...existing, { 
+                      text, 
+                      sent: false, 
+                      timestamp: message.sentAt || new Date() 
+                    }]
                   };
                 });
               }
