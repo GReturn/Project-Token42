@@ -41,6 +41,8 @@ contract Token42Escrow {
         uint256 amountB;
         bool proofA; // Has User A submitted User B's signature?
         bool proofB; // Has User B submitted User A's signature?
+        bool cancelA; // Has User A requested cancellation?
+        bool cancelB; // Has User B requested cancellation?
         EscrowStatus status;
     }
 
@@ -121,6 +123,8 @@ contract Token42Escrow {
             amountB: 0,
             proofA: false,
             proofB: false,
+            cancelA: false,
+            cancelB: false,
             status: EscrowStatus.Proposed
         });
 
@@ -144,6 +148,33 @@ contract Token42Escrow {
         date.status = EscrowStatus.Active;
 
         emit DateAccepted(dateId, msg.sender);
+    }
+
+    /**
+     * @dev Request mutual cancellation of the date.
+     *      If both request cancellation, funds are returned.
+     */
+    function cancelDate(address partner) external {
+        bytes32 dateId = _getDateId(msg.sender, partner);
+        DateEscrow storage date = dates[dateId];
+        
+        if (date.status != EscrowStatus.Proposed && date.status != EscrowStatus.Active) revert InvalidStatus();
+
+        if (msg.sender == date.userA) {
+            date.cancelA = true;
+        } else {
+            date.cancelB = true;
+        }
+
+        // If both agree, resolve to cancel immediately
+        if (date.status == EscrowStatus.Active) {
+            if (date.cancelA && date.cancelB) {
+                _resolveCancelled(dateId);
+            }
+        } else if (date.status == EscrowStatus.Proposed) {
+            // In Proposed state, either can cancel without consent
+            _resolveCancelled(dateId);
+        }
     }
 
     /**
@@ -187,16 +218,9 @@ contract Token42Escrow {
         if (date.status != EscrowStatus.Active) revert InvalidStatus();
         if (block.timestamp <= date.startTime + dateWindow) revert WindowNotExpired();
 
-        if (date.proofA && !date.proofB) {
-            // User B flaked
-            _resolveSlashed(dateId, date.userA, date.userB);
-        } else if (date.proofB && !date.proofA) {
-            // User A flaked
-            _resolveSlashed(dateId, date.userB, date.userA);
-        } else {
-            // Neither or Both (Both handled in submitProof, but just in case of race)
-            _resolveCancelled(dateId);
-        }
+        // Under the Collateral Burn model: If not resolved via successful meetup, 
+        // and mutual cancellation wasn't triggered prior to expiration, BOTH lose funds.
+        _resolveSlashedBoth(dateId);
     }
 
     function _resolveSuccess(bytes32 dateId) internal {
@@ -214,18 +238,17 @@ contract Token42Escrow {
         emit DateResolved(dateId, EscrowStatus.Resolved, fee);
     }
 
-    function _resolveSlashed(bytes32 dateId, address winner, address flaker) internal {
+    function _resolveSlashedBoth(bytes32 dateId) internal {
         DateEscrow storage date = dates[dateId];
         date.status = EscrowStatus.Slashed;
 
-        uint256 flakerStake = (flaker == date.userA) ? date.amountA : date.amountB;
-        uint256 winnerStake = (winner == date.userA) ? date.amountA : date.amountB;
-        
-        uint256 penalty = (flakerStake * penaltyFeeBps) / 10000;
-        uint256 toWinner = winnerStake + (flakerStake - penalty);
+        uint256 totalPool = date.amountA + date.amountB;
+        uint256 penalty = (totalPool * penaltyFeeBps) / 10000;
+        uint256 returnAmount = (totalPool - penalty) / 2;
 
         rUSD.transfer(treasury, penalty);
-        rUSD.transfer(winner, toWinner);
+        rUSD.transfer(date.userA, returnAmount);
+        rUSD.transfer(date.userB, returnAmount);
 
         emit DateResolved(dateId, EscrowStatus.Slashed, penalty);
     }
