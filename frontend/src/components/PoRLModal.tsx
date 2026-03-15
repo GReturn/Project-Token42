@@ -11,6 +11,8 @@ interface PoRLModalProps {
   onClose: () => void;
   onSubmitProof: (signature: string) => Promise<void>;
   onAcceptDate: () => Promise<void>;
+  onCancelDate: (partner: string) => Promise<void>;
+  onResolveExpired: (partner: string) => Promise<void>;
 }
 
 const PoRLModal: React.FC<PoRLModalProps> = ({ 
@@ -19,7 +21,9 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
   status, 
   onClose, 
   onSubmitProof,
-  onAcceptDate
+  onAcceptDate,
+  onCancelDate,
+  onResolveExpired
 }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [mySignature, setMySignature] = useState<string | null>(null);
@@ -83,15 +87,21 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
           </div>
 
           {status.status === 1 && !isUserB && (
-            <p style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-              Waiting for {partner.slice(0, 6)}... to accept the date.
-            </p>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ color: 'var(--text-muted)' }}>
+                Waiting for {partner.slice(0, 6)}... to accept the date.
+              </p>
+              <button className="secondary-btn" onClick={() => onCancelDate(partner)} style={{ marginTop: '1rem', width: '100%' }}>Cancel Request</button>
+            </div>
           )}
 
           {canAccept && (
             <div style={{ textAlign: 'center' }}>
               <p style={{ marginBottom: '1.5rem' }}>You've been invited to a date! Stake 10 rUSD to confirm.</p>
-              <button className="primary-btn" onClick={onAcceptDate}>Accept & Stake Locked</button>
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                <button className="primary-btn" onClick={onAcceptDate}>Accept & Stake</button>
+                <button className="secondary-btn" onClick={() => onCancelDate(partner)}>Cancel</button>
+              </div>
             </div>
           )}
 
@@ -126,6 +136,13 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
                   ✓ Your proof submitted! Waiting for partner.
                 </p>
               )}
+
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
+                <button className="secondary-btn" onClick={() => onCancelDate(partner)} style={{ fontSize: '0.85rem' }}>Cancel Date</button>
+                {Date.now() / 1000 > Number(status.startTime) + 24 * 3600 && (
+                   <button className="primary-btn" onClick={() => onResolveExpired(partner)} style={{ fontSize: '0.85rem', background: '#FF3366' }}>Settle Timeout</button>
+                )}
+              </div>
             </div>
           )}
 

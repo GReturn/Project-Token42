@@ -42,6 +42,8 @@ const ESCROW_ABI = [
   "function proposeDate(address recipient) public",
   "function acceptDate(address proposer) public",
   "function submitProof(address partner, bytes signature) public",
+  "function cancelDate(address partner) public",
+  "function resolveExpired(address partner) public",
   "function dates(bytes32 dateId) public view returns (address userA, address userB, uint256 startTime, uint256 amountA, uint256 amountB, bool proofA, bool proofB, uint8 status)"
 ];
 
@@ -1383,6 +1385,42 @@ function App() {
   };
 
 
+  const cancelDate = async (partner: string) => {
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const escrow = new ethers.Contract(ESCROW_CONTRACT_ADDRESS, ESCROW_ABI, signer);
+      const tx = await escrow.cancelDate(partner);
+      await tx.wait();
+      toast.success("Date Cancellation Requested!");
+      checkDateStatus(partner);
+    } catch (error: any) {
+      console.error("Cancel failed:", error);
+      toast.error(`Cancel Failed`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resolveExpired = async (partner: string) => {
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const escrow = new ethers.Contract(ESCROW_CONTRACT_ADDRESS, ESCROW_ABI, signer);
+      const tx = await escrow.resolveExpired(partner);
+      await tx.wait();
+      toast.success("Expired Date Settled!");
+      checkDateStatus(partner);
+    } catch (error: any) {
+      console.error("Resolve failed:", error);
+      toast.error(`Resolve Failed`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const proposeDate = async (partner: string) => {
     setLoading(true);
     try {
@@ -2312,6 +2350,8 @@ function App() {
           onClose={() => setIsPoRLModalOpen(false)}
           onAcceptDate={acceptDate}
           onSubmitProof={submitDateProof}
+          onCancelDate={cancelDate}
+          onResolveExpired={resolveExpired}
         />
       )}
       {isMatchLockModalOpen && (
