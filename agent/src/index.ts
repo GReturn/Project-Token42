@@ -30,6 +30,7 @@ export class Token42Agent {
     private agentWallet: ethers.Wallet;
     private ollamaUrl = 'http://localhost:11434/api/embed';
     public xmtpClient: Client | null = null;
+    public reportedPairs: { reporter: string; reported: string }[] = [];
 
     constructor(privateKey: string) {
         this.agentWallet = new ethers.Wallet(privateKey);
@@ -245,6 +246,14 @@ export class Token42Agent {
     }
 
     public async handleMatchRequest(currentUser: UserProfile, potentialMatches: UserProfile[], nonce: number) {
+        const filteredMatches = potentialMatches.filter(match => {
+            const isBlocked = this.reportedPairs.some(p => 
+                (p.reporter === currentUser.address.toLowerCase() && p.reported === match.address.toLowerCase()) ||
+                (p.reported === currentUser.address.toLowerCase() && p.reporter === match.address.toLowerCase())
+            );
+            return !isBlocked;
+        });
+
         if (!currentUser.personalityBio && currentUser.cid) {
             const data = await this.fetchFromIPFS(currentUser.cid);
             currentUser.personalityBio = data.bio;
@@ -253,8 +262,8 @@ export class Token42Agent {
         console.log(`Generating embedding for ${currentUser.address}...`);
         const userVector = await this.generateEmbedding(currentUser.personalityBio || "");
 
-        console.log(`Analyzing ${potentialMatches.length} matches...`);
-        const resultPromises = potentialMatches.map(async (match) => {
+        console.log(`Analyzing ${filteredMatches.length} matches...`);
+        const resultPromises = filteredMatches.map(async (match) => {
             if (!match.personalityBio && match.cid) {
                 const data = await this.fetchFromIPFS(match.cid);
                 match.personalityBio = data.bio;
@@ -407,6 +416,18 @@ app.get('/info', (req, res) => {
     res.json({ agentInboxId: agent.xmtpClient?.inboxId });
 });
 
+app.get('/blocks', (req, res) => {
+    const { address } = req.query;
+    if (!address) return res.status(400).json({ error: "Address is required" });
+    
+    const addrLower = (address as string).toLowerCase();
+    const blockedUsers = agent.reportedPairs
+        .filter(p => p.reporter === addrLower || p.reported === addrLower)
+        .map(p => p.reporter === addrLower ? p.reported : p.reporter);
+        
+    res.json({ blockedUsers });
+});
+
 app.post('/report', async (req, res) => {
     const { sender, recipient, chatHistory } = req.body;
     console.log(`📥 Received report from ${sender} against ${recipient}`);
@@ -417,6 +438,10 @@ app.post('/report', async (req, res) => {
         if (isViolation) {
             console.log(`🚨 Violation detected. Triggering on-chain slash for match...`);
             const success = await agent.triggerSlash(sender, recipient);
+            
+            agent.reportedPairs.push({ reporter: sender.toLowerCase(), reported: recipient.toLowerCase() });
+            console.log(`[Blocklist] Blocked: ${sender} -> ${recipient}`);
+
             return res.json({ 
                 status: "Slashed", 
                 message: success 
