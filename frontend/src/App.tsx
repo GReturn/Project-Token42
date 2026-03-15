@@ -10,6 +10,7 @@ import Loading from './components/Loading';
 import GlassCard from './components/GlassCard';
 import StatusBadge from './components/StatusBadge';
 import PoRLModal from './components/PoRLModal';
+import ReportModal from './components/ReportModal';
 import { compressImage, getCroppedImg } from './utils/images';
 import Cropper from 'react-easy-crop';
 
@@ -76,6 +77,8 @@ function App() {
   const [revealedUsers, setRevealedUsers] = useState<Set<string>>(new Set());
   const [dateEscrowStatus, setDateEscrowStatus] = useState<any>(null);
   const [isPoRLModalOpen, setIsPoRLModalOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportModalStatus, setReportModalStatus] = useState<string>('Safe');
   const [isMatchLockModalOpen, setIsMatchLockModalOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Record<string, { text: string; sent: boolean }[]>>({});
   const [isConnecting, setIsConnecting] = useState(false);
@@ -83,7 +86,27 @@ function App() {
   const [xmtpClient, setXmtpClient] = useState<Client | null>(null);
   const [agentInboxId, setAgentInboxId] = useState<string | null>(null);
   const [rusdBalance, setRusdBalance] = useState<string>("0");
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
   const [isXmtpLoading, setIsXmtpLoading] = useState(false);
+
+  const checkBlockStatus = async () => {
+    if (!address) return;
+    try {
+      const response = await fetch(`http://localhost:3001/blocks?address=${address}`);
+      const data = await response.json();
+      setBlockedUsers(data.blockedUsers || []);
+    } catch (e) {
+      console.error("Failed to fetch blocks:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (address) {
+      checkBlockStatus();
+      const timer = setInterval(checkBlockStatus, 5000);
+      return () => clearInterval(timer);
+    }
+  }, [address]);
   const [showRecipientBio, setShowRecipientBio] = useState(false);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -1057,8 +1080,27 @@ function App() {
         })
       });
       const data = await response.json();
+      
+      // Trigger evaluation modal for demonstration
+      setReportModalStatus(data.status || "Error");
+      setIsReportModalOpen(true);
+
       if (data.status === "Slashed") {
-        toast.success("User reported. AI has verified violation and triggered slash.", { id: toastId, duration: 5000 });
+        toast.success("User reported. AI has verified violation.", { id: toastId, duration: 5000 });
+        
+        // Remove from local chat mappings
+        setChatMessages(prev => {
+          const updated = { ...prev };
+          delete updated[partner];
+          return updated;
+        });
+        
+        // Remove from matches discovery list
+        setMatches(prev => prev.filter(m => m.matchAddress.toLowerCase() !== partner.toLowerCase()));
+        
+        // Close active view
+        setActiveChat(null);
+
       } else if (data.status === "Safe") {
         toast.success("AI evaluated chat: No policy violations found.", { id: toastId });
       } else {
@@ -2217,6 +2259,7 @@ function App() {
                           setIsPoRLModalOpen(true);
                         }}
                         style={{ color: 'var(--accent)', marginRight: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        disabled={blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase())}
                       >
                         <span>❤️</span>
                         <span className="btn-text" style={{ fontSize: '0.85rem' }}>
@@ -2230,6 +2273,7 @@ function App() {
                           onClick={() => setIsChatMenuOpen(!isChatMenuOpen)}
                           style={{ padding: '6px 10px', fontSize: '1.2rem', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', cursor: 'pointer' }}
                           title="More Actions"
+                          disabled={blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase())}
                         >
                           ⋮
                         </button>
@@ -2367,7 +2411,7 @@ function App() {
                             }
                           }}
                           rows={1}
-                          disabled={hasActiveStake}
+                          disabled={hasActiveStake || blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase())}
                         />
                         {!hasActiveStake && (
                           <div className="chat-char-count">
@@ -2378,11 +2422,32 @@ function App() {
                       <button
                         className="chat-send-btn"
                         onClick={sendChat}
-                        disabled={hasActiveStake || !chatInput.trim()}
+                        disabled={hasActiveStake || blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase()) || !chatInput.trim()}
                       >
                         Send
                       </button>
                     </div>
+                    
+                    {blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase()) && (
+                      <div className="chat-lock-overlay animate-in" style={{ 
+                        position: 'absolute', 
+                        top: 0, 
+                        left: 0, 
+                        right: 0, 
+                        bottom: 0, 
+                        background: 'rgba(5, 5, 5, 0.98)', 
+                        zIndex: 99,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <div className="chat-lock-content" style={{ textAlign: 'center' }}>
+                          <div className="lock-icon-large">🚫</div>
+                          <h3>Session Blocked</h3>
+                          <p style={{ maxWidth: '320px', margin: '0.5rem auto 0' }}>An AI-verified conduct violation was detected. Messaging is disabled.</p>
+                        </div>
+                      </div>
+                    )}
                   </GlassCard>
                 </>
               ) : (
@@ -2416,6 +2481,13 @@ function App() {
           onCancelDate={cancelDate}
           onResolveExpired={resolveExpired}
           onProposeDate={() => proposeDate(activeChat)}
+        />
+      )}
+      {isReportModalOpen && (
+        <ReportModal 
+          isOpen={isReportModalOpen} 
+          onClose={() => setIsReportModalOpen(false)} 
+          status={reportModalStatus} 
         />
       )}
       {isMatchLockModalOpen && (
