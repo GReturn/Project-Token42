@@ -613,6 +613,10 @@ body {
   margin: 0 auto;
 }
 
+.chat-layout > * {
+  min-height: 0;
+}
+
 .chat-main-container {
   display: flex;
   flex-direction: column;
