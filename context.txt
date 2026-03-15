@@ -1,0 +1,208 @@
+
+--- Matches for slashStake in d:/_src/blockchain/token42/frontend/src/App.tsx ---
+
+[Line 33]
+  "function hasProfile(address user) public view returns (bool)",
+  "function getProfileCID(address user) public view returns (string)",
+  "function ownerOf(uint256 tokenId) public view returns (address)"
+];
+
+const MESSAGING_ABI = [
+  "function stakeForMessage(address recipient, uint256 matchScore, bytes signature) public",
+  "function claimStake(address sender) public",
+  "function slashStake(address sender, address recipient) public",
+  "function burnForReveal(address recipient) public",
+  "function nonces(address user) public view returns (uint256)",
+  "function matches(bytes32 matchId) public view returns (address sender, address recipient, uint256 stake, bool active)",
+  "event RevealPurchased(address indexed sender, address indexed recipient, uint256 amount)",
+  "event MessageStaked(address indexed sender, address indexed recipient, uint256 amount, uint256 nonce)"
+];
+
+
+--- Matches for report in d:/_src/blockchain/token42/frontend/src/App.tsx ---
+
+[Line 1509]
+          inboxId,
+          ...(agentInboxId ? [agentInboxId] : [])
+        ]);
+        console.log(`📡 DM Conversation created/found: ${conversation.id.substring(0, 8)}`);
+        try {
+          await conversation.sync(); 
+        } catch (syncErr) {
+          if (isXmtpSoftSuccess(syncErr)) {
+            console.log("Message sync report (soft-success)");
+          } else {
+            console.warn("Message sync warning (non-fatal):", syncErr);
+          }
+        }
+        const encoded = await encodeText(messageText);
+        await conversation.send(encoded);
+        console.log("✅ Message sent via XMTP V3 (MLS)");
+
+[Line 1561]
+      // createDm creates/finds a 1:1 DM conversation (proper DM stitching)
+      const conversation = await xmtpClient.conversations.createDm(inboxId);
+      console.log("🆕 New conversation ID:", conversation.id);
+      
+      try {
+        await conversation.sync();
+      } catch (syncErr) {
+        if (isXmtpSoftSuccess(syncErr)) {
+          console.log("Fresh room sync report (soft-success)");
+        } else {
+          console.warn("Fresh room sync warning:", syncErr);
+        }
+      }
+
+      const encoded = await encodeText("🛠️ Troubleshooting: Fresh conversation started.");
+      await conversation.send(encoded);
+
+--- Matches for revoke in d:/_src/blockchain/token42/frontend/src/App.tsx ---
+
+[Line 515]
+        toast.error("Failed to enable real-time messaging");
+      }
+    } finally {
+      setIsXmtpLoading(false);
+      isInitializingXmtp.current = false;
+    }
+  };
+
+  const revokeXmtpInstallations = async () => {
+    if (!address) return;
+    const toastId = toast.loading("Performing Emergency Rescue (v2)...");
+    try {
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const walletAddress = await signer.getAddress();
+
+
+[Line 566]
+        }
+      };
+
+      console.log("Found Inbox ID:", inboxId);
+      const states = await Client.fetchInboxStates([inboxId], backend);
+      const inboxState = states[0];
+      
+      if (!inboxState || inboxState.installations.length === 0) {
+        toast.success("No active installations to revoke!", { id: toastId });
+        return;
+      }
+
+      const installationIds = inboxState.installations.map(inst => inst.bytes);
+      console.log(`Detected ${installationIds.length} installations:`, installationIds.map(i => ethers.hexlify(i)));
+
+      // Static revoke (requires signer + inboxId + array of IDs)
+
+[Line 573]
+      if (!inboxState || inboxState.installations.length === 0) {
+        toast.success("No active installations to revoke!", { id: toastId });
+        return;
+      }
+
+      const installationIds = inboxState.installations.map(inst => inst.bytes);
+      console.log(`Detected ${installationIds.length} installations:`, installationIds.map(i => ethers.hexlify(i)));
+
+      // Static revoke (requires signer + inboxId + array of IDs)
+      console.log("Sending revocation transaction to network...");
+      await Client.revokeInstallations(xmtpSigner as any, inboxId, installationIds, backend);
+      console.log("Revocation successful.");
+      
+      toast.success("Network sessions cleared! Now click 'Clear XMTP DB' then refresh.", { id: toastId, duration: 8000 });
+    } catch (error: any) {
+      console.error("Rescue v2 failed:", error);
+
+[Line 575]
+        return;
+      }
+
+      const installationIds = inboxState.installations.map(inst => inst.bytes);
+      console.log(`Detected ${installationIds.length} installations:`, installationIds.map(i => ethers.hexlify(i)));
+
+      // Static revoke (requires signer + inboxId + array of IDs)
+      console.log("Sending revocation transaction to network...");
+      await Client.revokeInstallations(xmtpSigner as any, inboxId, installationIds, backend);
+      console.log("Revocation successful.");
+      
+      toast.success("Network sessions cleared! Now click 'Clear XMTP DB' then refresh.", { id: toastId, duration: 8000 });
+    } catch (error: any) {
+      console.error("Rescue v2 failed:", error);
+      toast.error(`Force rescue failed: ${error.message}. Use 'Clear XMTP DB' and refresh first.`, { id: toastId, duration: 10000 });
+    }
+
+[Line 644]
+
+        syncInterval = setInterval(async () => {
+          if (isTerminated) return;
+          try {
+            await xmtpClient.conversations.sync();
+          } catch (e) {
+            console.warn("Background sync failed:", e);
+            if (String(e).includes("InboxValidationFailed") || (e as any)?.message?.includes("InboxValidationFailed")) {
+              console.warn("🚨 InboxValidationFailed detected (revoked key)! Triggering OPFS clear and reboot...");
+              localStorage.setItem("xmtp_force_recover", "true");
+              window.location.reload();
+            }
+          }
+        }, 15000);
+
+        // Helper to resolve sender address from a group topic
+
+[Line 1747]
+                    onClick={getFaucetrUSD} 
+                    disabled={loading}
+                    style={{ fontSize: '0.75rem', padding: '4px 8px', border: '1px solid var(--accent)', borderRadius: '4px' }}
+                  >
+                    {loading ? "..." : "🪙 Faucet"}
+                  </button>
+                  <button 
+                    className="text-btn" 
+                    onClick={revokeXmtpInstallations} 
+                    style={{ fontSize: '0.65rem', opacity: 0.5, border: 'none', background: 'transparent' }}
+                  >
+                    Rescue XMTP
+                  </button>
+                  <button 
+                    className="text-btn" 
+                    onClick={clearXmtpOpfs} 
+
+--- Matches for slash in d:/_src/blockchain/token42/agent/src/index.ts ---
+
+[Line 323]
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/info', (req, res) => {
+    res.json({ agentInboxId: agent.xmtpClient?.inboxId });
+});
+
+app.post('/slash', async (req, res) => {
+    const { sender, recipient } = req.body;
+    console.log(`Moderation Alert: Slashing ${sender} for reported harassment against ${recipient}`);
+    res.json({ status: "Slashed", sender, recipient });
+});
+
+const PORT = Number(process.env.PORT) || 3001;
+app.listen(PORT, '0.0.0.0', async () => {
+
+--- Matches for report in d:/_src/blockchain/token42/agent/src/index.ts ---
+
+[Line 325]
+});
+
+app.get('/info', (req, res) => {
+    res.json({ agentInboxId: agent.xmtpClient?.inboxId });
+});
+
+app.post('/slash', async (req, res) => {
+    const { sender, recipient } = req.body;
+    console.log(`Moderation Alert: Slashing ${sender} for reported harassment against ${recipient}`);
+    res.json({ status: "Slashed", sender, recipient });
+});
+
+const PORT = Number(process.env.PORT) || 3001;
+app.listen(PORT, '0.0.0.0', async () => {
+    console.log(`\n🚀 Token42 AI Agent Server starting on http://localhost:${PORT}`);
+    await agent.initXMTP();

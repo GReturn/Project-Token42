@@ -11,6 +11,9 @@ interface PoRLModalProps {
   onClose: () => void;
   onSubmitProof: (signature: string) => Promise<void>;
   onAcceptDate: () => Promise<void>;
+  onCancelDate: (partner: string) => Promise<void>;
+  onResolveExpired: (partner: string) => Promise<void>;
+  onProposeDate?: () => Promise<void>;
 }
 
 const PoRLModal: React.FC<PoRLModalProps> = ({ 
@@ -19,7 +22,10 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
   status, 
   onClose, 
   onSubmitProof,
-  onAcceptDate
+  onAcceptDate,
+  onCancelDate,
+  onResolveExpired,
+  onProposeDate
 }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [mySignature, setMySignature] = useState<string | null>(null);
@@ -28,11 +34,12 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
   // Sign: dateId + partnerAddress
   useEffect(() => {
     const signPayload = async () => {
-      if (status && status.id && (window as any).ethereum) {
+      // Only sign if we are in an Active date (status 2) and haven't signed yet
+      if (status && status.status === 2 && status.id && (window as any).ethereum && !mySignature) {
         try {
           const provider = new ethers.BrowserProvider((window as any).ethereum);
           const signer = await provider.getSigner();
-          const message = ethers.solidityPackedKeccak256(["bytes32", "address"], [status.id, address]);
+          const message = ethers.solidityPackedKeccak256(["bytes32", "address"], [status.id, partner]);
           const sig = await signer.signMessage(ethers.toBeArray(message));
           setMySignature(sig);
         } catch (e) {
@@ -41,7 +48,7 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
       }
     };
     signPayload();
-  }, [status, address]);
+  }, [status?.id, status?.status, partner, mySignature]);
 
   const startScanner = () => {
     setIsScanning(true);
@@ -82,16 +89,42 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
             {getStatusLabel(status.status)}
           </div>
 
+          {status.status === 0 && (
+            <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🤝</div>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
+                No active date escrow found for this match.
+              </p>
+              <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', textAlign: 'left' }}>
+                <p style={{ fontSize: '0.9rem', margin: 0, lineHeight: '1.4' }}>
+                  💡 **Proposing a date** locks 10 rUSD in secure escrow. 
+                  It is safely returned to you upon successful meetup verification.
+                </p>
+              </div>
+              {onProposeDate && (
+                <button className="primary-btn" onClick={onProposeDate} style={{ width: '100%' }}>
+                  Propose Date & Stake (10 rUSD)
+                </button>
+              )}
+            </div>
+          )}
+
           {status.status === 1 && !isUserB && (
-            <p style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-              Waiting for {partner.slice(0, 6)}... to accept the date.
-            </p>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ color: 'var(--text-muted)' }}>
+                Waiting for {partner.slice(0, 6)}... to accept the date.
+              </p>
+              <button className="secondary-btn" onClick={() => onCancelDate(partner)} style={{ marginTop: '1rem', width: '100%' }}>Cancel Request</button>
+            </div>
           )}
 
           {canAccept && (
             <div style={{ textAlign: 'center' }}>
               <p style={{ marginBottom: '1.5rem' }}>You've been invited to a date! Stake 10 rUSD to confirm.</p>
-              <button className="primary-btn" onClick={onAcceptDate}>Accept & Stake Locked</button>
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                <button className="primary-btn" onClick={onAcceptDate}>Accept & Stake</button>
+                <button className="secondary-btn" onClick={() => onCancelDate(partner)}>Cancel</button>
+              </div>
             </div>
           )}
 
@@ -126,6 +159,13 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
                   ✓ Your proof submitted! Waiting for partner.
                 </p>
               )}
+
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
+                <button className="secondary-btn" onClick={() => onCancelDate(partner)} style={{ fontSize: '0.85rem' }}>Cancel Date</button>
+                {Date.now() / 1000 > Number(status.startTime) + 24 * 3600 && (
+                   <button className="primary-btn" onClick={() => onResolveExpired(partner)} style={{ fontSize: '0.85rem', background: '#FF3366' }}>Settle Timeout</button>
+                )}
+              </div>
             </div>
           )}
 

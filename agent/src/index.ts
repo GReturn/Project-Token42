@@ -8,6 +8,12 @@ import { Buffer } from 'buffer';
 
 dotenv.config();
 
+const MESSAGING_CONTRACT_ADDRESS = process.env.MESSAGING_CONTRACT_ADDRESS || "0x8B8d13a7f678FA8f6793290Ee9e46302Be427453";
+const MESSAGING_ABI = [
+    "function slashStake(address sender, address recipient) public",
+    "function matches(bytes32 matchId) public view returns (address sender, address recipient, uint256 stake, bool active)"
+];
+
 interface UserProfile {
     address: string;
     personalityBio?: string;
@@ -284,6 +290,83 @@ export class Token42Agent {
 
         return null;
     }
+
+    /**
+     * @dev Evaluate chat history for policy violations using Ollama.
+     */
+    public async evaluateChat(chatHistory: any[]): Promise<boolean> {
+        try {
+            if (!chatHistory || chatHistory.length === 0) return false;
+
+            const formattedChat = chatHistory.map((m: any) => `${m.sent ? 'Reporter' : 'Reported'}: ${m.text}`).join('\n');
+            const prompt = `Evaluate the following chat conversation for any signs of harassment, abuse, or severe behavior. 
+Reply with ONLY the word "VIOLATION" if there is a breach of conduct, or "SAFE" if acceptable.
+
+--- CHAT START ---
+${formattedChat}
+--- CHAT END ---
+
+Decision (VIOLATION or SAFE):`;
+
+            console.log("Analyzing chat with Ollama...");
+            const response = await axios.post('http://localhost:11434/api/generate', {
+                model: 'llama3',
+                prompt: prompt,
+                stream: false
+            });
+
+            const result = response.data.response || "";
+            const resultClean = result.trim().toUpperCase();
+            console.log(`Ollama Evaluation: ${resultClean}`);
+            return resultClean.includes("VIOLATION");
+        } catch (error) {
+            console.error("❌ Evaluation failed:", error);
+            return false;
+        }
+    }
+
+    /**
+     * @dev Execute on-chain slashStake.
+     */
+    public async triggerSlash(sender: string, recipient: string): Promise<boolean> {
+        try {
+            const provider = new ethers.JsonRpcProvider('https://eth-rpc-testnet.polkadot.io');
+            const connectedWallet = this.agentWallet.connect(provider);
+            const messagingContract = new ethers.Contract(MESSAGING_CONTRACT_ADDRESS, MESSAGING_ABI, connectedWallet);
+
+            // Lookup active match
+            const matchId1 = ethers.solidityPackedKeccak256(["address", "address"], [sender, recipient]);
+            const match1 = await messagingContract.matches(matchId1);
+            
+            const matchId2 = ethers.solidityPackedKeccak256(["address", "address"], [recipient, sender]);
+            const match2 = await messagingContract.matches(matchId2);
+
+            let matchSender = null;
+            let matchRecipient = null;
+
+            if (match1.active && match1.stake > 0n) {
+                matchSender = sender;
+                matchRecipient = recipient;
+            } else if (match2.active && match2.stake > 0n) {
+                matchSender = recipient;
+                matchRecipient = sender;
+            }
+
+            if (matchSender && matchRecipient) {
+                console.log(`Found active match with stake. Triggering slashStake(${matchSender}, ${matchRecipient})`);
+                const tx = await messagingContract.slashStake(matchSender, matchRecipient);
+                await tx.wait();
+                console.log("✅ Slash transaction confirmed.");
+                return true;
+            } else {
+                console.warn("No active match with stake found to slash.");
+                return false;
+            }
+        } catch (error) {
+            console.error("❌ Slash execution failed:", error);
+            return false;
+        }
+    }
 }
 
 // Start Server
@@ -320,10 +403,29 @@ app.get('/info', (req, res) => {
     res.json({ agentInboxId: agent.xmtpClient?.inboxId });
 });
 
-app.post('/slash', async (req, res) => {
-    const { sender, recipient } = req.body;
-    console.log(`Moderation Alert: Slashing ${sender} for reported harassment against ${recipient}`);
-    res.json({ status: "Slashed", sender, recipient });
+app.post('/report', async (req, res) => {
+    const { sender, recipient, chatHistory } = req.body;
+    console.log(`📥 Received report from ${sender} against ${recipient}`);
+    
+    try {
+        const isViolation = await agent.evaluateChat(chatHistory || []);
+        
+        if (isViolation) {
+            console.log(`🚨 Violation detected. Triggering on-chain slash for match...`);
+            const success = await agent.triggerSlash(sender, recipient);
+            if (success) {
+                return res.json({ status: "Slashed", message: "Violation verified. Stake slashed." });
+            } else {
+                return res.json({ status: "Error", message: "Violation detected but slash execution failed." });
+            }
+        } else {
+            console.log(`✅ Chat evaluated as SAFE.`);
+            return res.json({ status: "Safe", message: "Chat content does not violate policies." });
+        }
+    } catch (e: any) {
+        console.error("❌ Error in /report:", e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 const PORT = Number(process.env.PORT) || 3001;

@@ -66,6 +66,16 @@ async function main() {
         console.log("Token42Messaging:", messagingAddress);
         console.log("Token42Escrow:", escrowAddress);
         console.log("MockRUSD:", rUSDAddress);
+
+        const fs = require("fs");
+        const addresses = {
+            Token42Profile: profileAddress,
+            Token42Messaging: messagingAddress,
+            Token42Escrow: escrowAddress,
+            MockRUSD: rUSDAddress
+        };
+        fs.writeFileSync("deployed-addresses.json", JSON.stringify(addresses, null, 2));
+        console.log("Saved addresses to deployed-addresses.json");
     }
     
     main().catch((error) => {
