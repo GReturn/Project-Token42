@@ -23,7 +23,7 @@ interface UserProfile {
 export class Token42Agent {
     private agentWallet: ethers.Wallet;
     private ollamaUrl = 'http://localhost:11434/api/embed';
-    private xmtpClient: Client | null = null;
+    public xmtpClient: Client | null = null;
 
     constructor(privateKey: string) {
         this.agentWallet = new ethers.Wallet(privateKey);
@@ -314,6 +314,10 @@ app.post('/match', async (req, res) => {
         console.error("❌ Error in /match route:", error.message);
         res.status(500).json({ error: error.message });
     }
+});
+
+app.get('/info', (req, res) => {
+    res.json({ agentInboxId: agent.xmtpClient?.inboxId });
 });
 
 app.post('/slash', async (req, res) => {

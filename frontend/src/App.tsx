@@ -146,6 +146,23 @@ function App() {
     }
   }, [address]);
 
+  // Auto-load Agent Info on boot for 3-Way moderated Group Chat
+  useEffect(() => {
+    const fetchAgentInfo = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/info');
+        const data = await response.json();
+        if (data.agentInboxId) {
+          console.log("🤖 Auto-loaded Agent Inbox ID for Moderation:", data.agentInboxId);
+          setAgentInboxId(data.agentInboxId);
+        }
+      } catch (e) {
+        console.warn("⚠️ Failed to auto-load Agent info (Normal if agent is offline):", e);
+      }
+    };
+    fetchAgentInfo();
+  }, []);
+
   // Persist Chats
   useEffect(() => {
     if (address && Object.keys(chatMessages).length > 0) {
