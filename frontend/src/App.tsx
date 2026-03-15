@@ -1066,7 +1066,21 @@ function App() {
       setIsReportModalOpen(true);
 
       if (data.status === "Slashed") {
-        toast.success("User reported. AI has verified violation and triggered slash.", { id: toastId, duration: 5000 });
+        toast.success("User reported. AI has verified violation.", { id: toastId, duration: 5000 });
+        
+        // Remove from local chat mappings
+        setChatMessages(prev => {
+          const updated = { ...prev };
+          delete updated[partner];
+          return updated;
+        });
+        
+        // Remove from matches discovery list
+        setMatches(prev => prev.filter(m => m.matchAddress.toLowerCase() !== partner.toLowerCase()));
+        
+        // Close active view
+        setActiveChat(null);
+
       } else if (data.status === "Safe") {
         toast.success("AI evaluated chat: No policy violations found.", { id: toastId });
       } else {

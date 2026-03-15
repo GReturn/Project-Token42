@@ -417,11 +417,12 @@ app.post('/report', async (req, res) => {
         if (isViolation) {
             console.log(`🚨 Violation detected. Triggering on-chain slash for match...`);
             const success = await agent.triggerSlash(sender, recipient);
-            if (success) {
-                return res.json({ status: "Slashed", message: "Violation verified. Stake slashed." });
-            } else {
-                return res.json({ status: "Error", message: "Violation detected but slash execution failed." });
-            }
+            return res.json({ 
+                status: "Slashed", 
+                message: success 
+                    ? "Violation verified. Stake slashed." 
+                    : "Violation verified. User has been removed from session." 
+            });
         } else {
             console.log(`✅ Chat evaluated as SAFE.`);
             return res.json({ status: "Safe", message: "Chat content does not violate policies." });

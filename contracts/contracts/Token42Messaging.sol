@@ -48,6 +48,7 @@ contract Token42Messaging {
         address sender;
         address recipient;
         uint256 stake;
+        uint256 timestamp;
         bool active;
     }
 
@@ -69,6 +70,7 @@ contract Token42Messaging {
     error CannotRemoveOwner();
     error MissingProfile();
     error RevealTransferFailed();
+    error WindowNotExpired();
 
     // --- Events ---
     event MessageStaked(
@@ -87,6 +89,11 @@ contract Token42Messaging {
         address indexed sender,
         address indexed recipient,
         address indexed reviewer,
+        uint256 amount
+    );
+    event StakeRefunded(
+        address indexed sender,
+        address indexed recipient,
         uint256 amount
     );
     event RevealPurchased(
@@ -223,6 +230,7 @@ contract Token42Messaging {
             sender: msg.sender,
             recipient: recipient,
             stake: stakeAmount,
+            timestamp: block.timestamp,
             active: true
         });
 
@@ -242,10 +250,15 @@ contract Token42Messaging {
         req.active = false;
         
         uint256 fee = (req.stake * protocolFeeBps) / 10000;
-        uint256 recipientAmount = req.stake - fee;
+        uint256 refundAmount = (req.stake * 5000) / 10000; // 50% Refund to Sender
+        uint256 recipientAmount = req.stake - fee - refundAmount; // 40% to Recipient
 
         if (fee > 0) {
             if (!rUSD.transfer(treasury, fee)) revert ClaimTransferFailed();
+        }
+
+        if (refundAmount > 0) {
+            if (!rUSD.transfer(req.sender, refundAmount)) revert ClaimTransferFailed();
         }
 
         if (!rUSD.transfer(msg.sender, recipientAmount)) {
@@ -268,6 +281,33 @@ contract Token42Messaging {
         }
 
         emit RevealPurchased(msg.sender, recipient, revealAmount);
+    }
+
+    /**
+     * @dev Refund a sender's stake if 24 hours have passed with no response.
+     *      Applies a 20% penalty fee to Treasury to penalize mass spam attempts.
+     */
+    function refundStake(address recipient) external {
+        bytes32 matchId = keccak256(abi.encodePacked(msg.sender, recipient));
+        MessageRequest storage req = matches[matchId];
+
+        if (!req.active) revert NoActiveStake();
+        if (block.timestamp <= req.timestamp + 1 days) revert WindowNotExpired();
+
+        req.active = false;
+
+        uint256 penalty = (req.stake * 2000) / 10000; // 20% Penalty
+        uint256 refundAmount = req.stake - penalty;
+
+        if (penalty > 0) {
+            if (!rUSD.transfer(treasury, penalty)) revert ClaimTransferFailed();
+        }
+
+        if (!rUSD.transfer(msg.sender, refundAmount)) {
+            revert ClaimTransferFailed();
+        }
+
+        emit StakeRefunded(msg.sender, recipient, refundAmount);
     }
 
     /**
