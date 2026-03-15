@@ -344,6 +344,10 @@ Decision (VIOLATION or SAFE):`;
             let matchSender = null;
             let matchRecipient = null;
 
+            console.log(`Match Check on-chain [${sender.slice(0,6)} -> ${recipient.slice(0,6)}]:`);
+            console.log(` - Match 1 Active: ${match1.active}, Stake: ${match1.stake}`);
+            console.log(` - Match 2 Active: ${match2.active}, Stake: ${match2.stake}`);
+
             if (match1.active && match1.stake > 0n) {
                 matchSender = sender;
                 matchRecipient = recipient;

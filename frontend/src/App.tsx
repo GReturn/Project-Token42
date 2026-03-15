@@ -10,6 +10,7 @@ import Loading from './components/Loading';
 import GlassCard from './components/GlassCard';
 import StatusBadge from './components/StatusBadge';
 import PoRLModal from './components/PoRLModal';
+import ReportModal from './components/ReportModal';
 import { compressImage, getCroppedImg } from './utils/images';
 import Cropper from 'react-easy-crop';
 
@@ -76,6 +77,8 @@ function App() {
   const [revealedUsers, setRevealedUsers] = useState<Set<string>>(new Set());
   const [dateEscrowStatus, setDateEscrowStatus] = useState<any>(null);
   const [isPoRLModalOpen, setIsPoRLModalOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportModalStatus, setReportModalStatus] = useState<string>('Safe');
   const [isMatchLockModalOpen, setIsMatchLockModalOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Record<string, { text: string; sent: boolean }[]>>({});
   const [isConnecting, setIsConnecting] = useState(false);
@@ -1057,6 +1060,11 @@ function App() {
         })
       });
       const data = await response.json();
+      
+      // Trigger evaluation modal for demonstration
+      setReportModalStatus(data.status || "Error");
+      setIsReportModalOpen(true);
+
       if (data.status === "Slashed") {
         toast.success("User reported. AI has verified violation and triggered slash.", { id: toastId, duration: 5000 });
       } else if (data.status === "Safe") {
@@ -2416,6 +2424,13 @@ function App() {
           onCancelDate={cancelDate}
           onResolveExpired={resolveExpired}
           onProposeDate={() => proposeDate(activeChat)}
+        />
+      )}
+      {isReportModalOpen && (
+        <ReportModal 
+          isOpen={isReportModalOpen} 
+          onClose={() => setIsReportModalOpen(false)} 
+          status={reportModalStatus} 
         />
       )}
       {isMatchLockModalOpen && (
