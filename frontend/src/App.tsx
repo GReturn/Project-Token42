@@ -2145,7 +2145,7 @@ function App() {
                     </div>
                   )}
 
-                  <GlassCard className="chat-container" style={{ position: 'relative' }}>
+                  <GlassCard className="chat-container" style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     <div className="chat-messages">
                     {(chatMessages[activeChat] || []).map((msg, i) => (
                       <div key={i} className={`chat-bubble ${msg.sent ? 'sent' : 'received'}`}>
