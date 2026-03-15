@@ -34,11 +34,12 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
   // Sign: dateId + partnerAddress
   useEffect(() => {
     const signPayload = async () => {
-      if (status && status.id && (window as any).ethereum) {
+      // Only sign if we are in an Active date (status 2) and haven't signed yet
+      if (status && status.status === 2 && status.id && (window as any).ethereum && !mySignature) {
         try {
           const provider = new ethers.BrowserProvider((window as any).ethereum);
           const signer = await provider.getSigner();
-          const message = ethers.solidityPackedKeccak256(["bytes32", "address"], [status.id, address]);
+          const message = ethers.solidityPackedKeccak256(["bytes32", "address"], [status.id, partner]);
           const sig = await signer.signMessage(ethers.toBeArray(message));
           setMySignature(sig);
         } catch (e) {
@@ -47,7 +48,7 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
       }
     };
     signPayload();
-  }, [status, address]);
+  }, [status?.id, status?.status, partner, mySignature]);
 
   const startScanner = () => {
     setIsScanning(true);
