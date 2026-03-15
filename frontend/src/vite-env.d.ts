@@ -2,7 +2,10 @@
 
 interface ImportMetaEnv {
   readonly VITE_PINATA_JWT: string
-  // more env variables...
+  readonly VITE_PROFILE_CONTRACT_ADDRESS?: string
+  readonly VITE_MESSAGING_CONTRACT_ADDRESS?: string
+  readonly VITE_ESCROW_CONTRACT_ADDRESS?: string
+  readonly VITE_RUSD_CONTRACT_ADDRESS?: string
 }
 
 interface ImportMeta {
