@@ -79,6 +79,7 @@ function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [initialProfile, setInitialProfile] = useState<UserProfile | null>(null);
   const [xmtpClient, setXmtpClient] = useState<Client | null>(null);
+  const [agentInboxId, setAgentInboxId] = useState<string | null>(null);
   const [rusdBalance, setRusdBalance] = useState<string>("0");
   const [isXmtpLoading, setIsXmtpLoading] = useState(false);
   const [showRecipientBio, setShowRecipientBio] = useState(false);
@@ -405,12 +406,13 @@ function App() {
       const signer = await provider.getSigner();
       
       console.log("Initializing XMTP V3 client with persistent DB...");
+      const checksummedAddress = await signer.getAddress();
       
       // Wrap Ethers signer for XMTP V3
       const xmtpSigner = {
         type: 'EOA' as const,
         getIdentifier: async () => ({
-          identifier: await signer.getAddress(), // Use standard checksummed address (with 0x)
+          identifier: checksummedAddress, // Use standard checksummed address (with 0x)
           identifierKind: 0 as any
         }),
         signMessage: async (message: string) => {
@@ -419,11 +421,61 @@ function App() {
         }
       };
 
+      // 1. STATIC AUTO-RECOVERY CHECK (BEFORE Client.create loads file locks)
+      let shouldForceRegister = false;
+      try {
+        const backend = await createBackend({ env: "dev" });
+        const inboxId = await getInboxIdForIdentifier(backend, {
+          identifier: checksummedAddress,
+          identifierKind: 0 as any
+        });
+
+        if (inboxId) {
+          const states = await Client.fetchInboxStates([inboxId], backend);
+          const inboxState = states[0];
+          const count = inboxState?.installations?.length || 0;
+          console.log(`🌐 Static network lookup for inbox ${inboxId.substring(0, 8)}: installations=${count}`);
+
+          const forceRecover = localStorage.getItem('xmtp_force_recover') === 'true';
+
+          if (count === 0 || forceRecover) {
+            console.warn(`⚠️ Clearing local DB BEFORE creation. Reason: ${count === 0 ? "Count 0" : "Force Recover Flag"}`);
+            localStorage.removeItem('xmtp_force_recover');
+            try {
+              const root = await navigator.storage.getDirectory();
+              for await (const [name] of (root as any).entries()) {
+                await root.removeEntry(name, { recursive: true });
+                console.log(`  Deleted OPFS entry: ${name}`);
+              }
+            } catch (opfsErr) {
+              console.warn("Static OPFS cleanup warning:", opfsErr);
+            }
+            shouldForceRegister = true;
+          }
+        }
+      } catch (e) {
+        console.warn("Static inbox lookup failed (non-fatal):", e);
+      }
+
+      // 2. CREATE CLIENT
       const client = await Client.create(xmtpSigner as any, { 
         env: "dev",
         dbPath: `token42-${address.toLowerCase()}.db`
       } as any);
       
+      if (shouldForceRegister) {
+        console.log("🔄 Triggering explicit registration on fresh client setup...");
+        try {
+          if (typeof client.register === 'function') {
+             await client.register();
+             console.log("✅ Registration published on fresh client.");
+             toast.success("Identity registered with network node!");
+          }
+        } catch (regErr) {
+          console.error("Post-recovery registration failed:", regErr);
+        }
+      }
+
       setXmtpClient(client);
       console.log("🆔 Client Inbox ID:", client.inboxId);
       console.log("✅ XMTP V3 initialized for:", address);
@@ -499,10 +551,12 @@ function App() {
       }
 
       const installationIds = inboxState.installations.map(inst => inst.bytes);
-      console.log(`Revoking ${installationIds.length} installations...`);
+      console.log(`Detected ${installationIds.length} installations:`, installationIds.map(i => ethers.hexlify(i)));
 
       // Static revoke (requires signer + inboxId + array of IDs)
+      console.log("Sending revocation transaction to network...");
       await Client.revokeInstallations(xmtpSigner as any, inboxId, installationIds, backend);
+      console.log("Revocation successful.");
       
       toast.success("Network sessions cleared! Now click 'Clear XMTP DB' then refresh.", { id: toastId, duration: 8000 });
     } catch (error: any) {
@@ -569,6 +623,11 @@ function App() {
             await xmtpClient.conversations.sync();
           } catch (e) {
             console.warn("Background sync failed:", e);
+            if (String(e).includes("InboxValidationFailed") || (e as any)?.message?.includes("InboxValidationFailed")) {
+              console.warn("🚨 InboxValidationFailed detected (revoked key)! Triggering OPFS clear and reboot...");
+              localStorage.setItem("xmtp_force_recover", "true");
+              window.location.reload();
+            }
           }
         }, 15000);
 
@@ -579,7 +638,7 @@ function App() {
           
           try {
             const group = typeof groupOrTopic === 'string' 
-              ? (await xmtpClient.conversations.list()).find((g: any) => g.topic === topic)
+              ? (await xmtpClient.conversations.list()).find((g: any) => g.id === topic || g.topic === topic)
               : groupOrTopic;
 
             if (group) {
@@ -590,11 +649,35 @@ function App() {
               }
               const members = await group.members();
               console.log(`Group ${topic.substring(0, 8)} members:`, members.map((m: any) => m.inboxId));
-              const otherMember = members.find((m: any) => m.inboxId !== xmtpClient.inboxId);
-              if (otherMember && (otherMember as any).accountAddresses.length > 0) {
-                const addr = ethers.getAddress((otherMember as any).accountAddresses[0]);
-                topicToAddress.current[topic] = addr;
-                return addr;
+              const otherMember = members.find((m: any) => 
+                m.inboxId !== xmtpClient.inboxId && 
+                (!agentInboxId || m.inboxId !== agentInboxId)
+              );
+              if (otherMember) {
+                console.log("🔍 otherMember full description:", otherMember);
+                const identifiers = (otherMember as any).accountIdentifiers || (otherMember as any).accountAddresses || [];
+                
+                if (identifiers.length > 0) {
+                  const identifierObj = identifiers[0];
+                  let addr = typeof identifierObj === 'object' && identifierObj.identifier 
+                    ? identifierObj.identifier 
+                    : identifierObj;
+
+                  if (typeof addr === 'string') {
+                    if (addr.startsWith('ethereum:')) {
+                      addr = addr.replace('ethereum:', '');
+                    }
+                    try {
+                      addr = ethers.getAddress(addr); // checksum standard
+                      topicToAddress.current[topic] = addr;
+                      return addr;
+                    } catch (e) {
+                      console.warn("⚠️ Failed to parse address from identifier:", addr, e);
+                    }
+                  }
+                } else {
+                  console.warn("⚠️ otherMember found but has no accountIdentifiers", otherMember);
+                }
               }
             }
           } catch (e) {
@@ -714,6 +797,11 @@ function App() {
             } catch (e) {
               if (isTerminated) break;
               console.warn("Conversation stream died, reconnecting...", e);
+              if (String(e).includes("InboxValidationFailed") || (e as any)?.message?.includes("InboxValidationFailed")) {
+                console.warn("🚨 InboxValidationFailed detected in stream! Triggering OPFS clear and reboot...");
+                localStorage.setItem("xmtp_force_recover", "true");
+                window.location.reload();
+              }
               await new Promise(r => setTimeout(r, 3000));
             }
           }
@@ -728,17 +816,32 @@ function App() {
             
             for await (const message of messageStream) {
               if (isTerminated) break;
-              console.log(`Streamed raw message detected: ${message.id} in group ${(message as any).contentTopic || (message as any).topic}`);
+              console.log(`Streamed raw message detected: ${message.id} from ${message.senderInboxId}`);
+              
+              // DIAGNOSTIC Diagnostics: see what properties are actually present
+              console.log("🔍 Message keys:", Object.keys(message));
+              console.log("🔍 Message details:", {
+                convoId: (message as any).convoId || (message as any).conversationId || (message as any).groupId,
+                group: (message as any).group ? "present" : "missing",
+                topic: (message as any).topic ? "present" : "missing"
+              });
+
               if (message.senderInboxId === xmtpClient.inboxId) {
                 console.log("Skipping own message");
                 continue;
               }
 
-              // Optimization: Resolve sender using the message's group if available
-              const groupRef = (message as any).group || (message as any).topic || (message as any).groupTopic;
+              // Optimization: Expand group list fallback to find Group OR Conversation key
+              const groupRef = 
+                (message as any).group || 
+                (message as any).topic || 
+                (message as any).groupTopic || 
+                (message as any).groupId || 
+                (message as any).convoId || 
+                (message as any).conversationId;
               
               if (!groupRef) {
-                console.warn("Message detected but no group/topic context found:", message.id);
+                console.warn("⚠️ Message detected but no group/topic context found. Object dump:", message);
                 continue;
               }
 
@@ -778,11 +881,22 @@ function App() {
           } catch (e) {
             if (isTerminated) break;
             console.warn("Message stream died, reconnecting...", e);
+            if (String(e).includes("InboxValidationFailed") || (e as any)?.message?.includes("InboxValidationFailed")) {
+              console.warn("🚨 InboxValidationFailed detected in message stream! Triggering OPFS clear and reboot...");
+              localStorage.setItem("xmtp_force_recover", "true");
+              window.location.reload();
+            }
             await new Promise(r => setTimeout(r, 3000));
           }
         }
       } catch (err) {
-        if (!isTerminated) console.error("XMTP Streaming error:", err);
+        if (!isTerminated) {
+          console.error("XMTP Streaming error:", err);
+          if (String(err).includes("InboxValidationFailed") || (err as any)?.message?.includes("InboxValidationFailed")) {
+            localStorage.setItem("xmtp_force_recover", "true");
+            window.location.reload();
+          }
+        }
       }
     };
 
@@ -996,6 +1110,10 @@ function App() {
 
       const data = await response.json();
       if (data) {
+        if (data.agentInboxId) {
+          console.log("🤖 Storing Agent Inbox ID for Moderation:", data.agentInboxId);
+          setAgentInboxId(data.agentInboxId);
+        }
         // Fetch full metadata for the match to get the avatar
         try {
           const metadata = await fetchFromIPFS(data.matchCid || potentialMatches.find(m => m.address === data.matchAddress)?.cid);
@@ -1086,7 +1204,10 @@ function App() {
         try {
           const inboxId = await resolveInboxId(recipient);
           if (inboxId) {
-            const conversation = await xmtpClient.conversations.createDm(inboxId);
+            const conversation = await xmtpClient.conversations.createGroup([
+              inboxId,
+              ...(agentInboxId ? [agentInboxId] : [])
+            ]);
             try {
               await conversation.sync(); 
             } catch (syncErr) {
@@ -1295,7 +1416,21 @@ function App() {
         if (!inboxId) throw new Error("Could not resolve recipient identity");
         console.log("🎯 Targeting Recipient Inbox ID:", inboxId);
         
-        const conversation = await xmtpClient.conversations.createDm(inboxId);
+        // Force refresh recipient's installation list into local cache from network
+        try {
+          console.log("Heating installations cache via canMessage...");
+          await xmtpClient.canMessage([{ 
+            identifier: activeChat, 
+            identifierKind: 0 as any 
+          }]);
+        } catch (prefErr) {
+          console.warn("Failed to heat installations cache (non-fatal):", prefErr);
+        }
+
+        const conversation = await xmtpClient.conversations.createGroup([
+          inboxId,
+          ...(agentInboxId ? [agentInboxId] : [])
+        ]);
         console.log(`📡 DM Conversation created/found: ${conversation.id.substring(0, 8)}`);
         try {
           await conversation.sync(); 
@@ -1309,12 +1444,71 @@ function App() {
         const encoded = await encodeText(messageText);
         await conversation.send(encoded);
         console.log("✅ Message sent via XMTP V3 (MLS)");
-      } catch (error) {
+      } catch (error: any) {
         if (isXmtpSoftSuccess(error)) {
           console.log("✅ Message sent via XMTP V3 (soft-success)");
         } else {
           console.error("❌ Failed to send message via XMTP V3:", error);
           toast.error("Real-time delivery failed");
+          if (String(error).includes("InboxValidationFailed") || error?.message?.includes("InboxValidationFailed")) {
+            console.warn("🚨 InboxValidationFailed detected! Triggering OPFS clear and reboot...");
+            localStorage.setItem("xmtp_force_recover", "true");
+            window.location.reload();
+          }
+        }
+      }
+    }
+  };
+
+  const forceNewRoom = async () => {
+    if (!activeChat || !xmtpClient) return;
+    const toastId = toast.loading("Creating fresh troubleshooting room...");
+    try {
+      const inboxId = await resolveInboxId(activeChat);
+      if (!inboxId) throw new Error("Could not resolve recipient identity");
+      
+      console.log("🧨 Forcing fresh room creation for:", activeChat);
+      
+      // Force refresh recipient's installation list into local cache from network
+      try {
+        console.log("Heating installations cache via canMessage...");
+        await xmtpClient.canMessage([{ 
+          identifier: activeChat, 
+          identifierKind: 0 as any 
+        }]);
+      } catch (prefErr) {
+        console.warn("Failed to heat installations cache (non-fatal):", prefErr);
+      }
+
+      // createDm creates/finds a 1:1 DM conversation (proper DM stitching)
+      const conversation = await xmtpClient.conversations.createDm(inboxId);
+      console.log("🆕 New conversation ID:", conversation.id);
+      
+      try {
+        await conversation.sync();
+      } catch (syncErr) {
+        if (isXmtpSoftSuccess(syncErr)) {
+          console.log("Fresh room sync report (soft-success)");
+        } else {
+          console.warn("Fresh room sync warning:", syncErr);
+        }
+      }
+
+      const encoded = await encodeText("🛠️ Troubleshooting: Fresh conversation started.");
+      await conversation.send(encoded);
+      
+      toast.success("Fresh room created! Send a message to test.", { id: toastId });
+    } catch (error: any) {
+      if (isXmtpSoftSuccess(error)) {
+        console.log("✅ Fresh room created! (soft-success response)");
+        toast.success("Fresh room created (soft-success)! Send a message.", { id: toastId });
+      } else {
+        console.error("Force new room failed:", error);
+        toast.error(`Failed to create fresh room: ${error.message}`, { id: toastId });
+        if (String(error).includes("InboxValidationFailed") || error?.message?.includes("InboxValidationFailed")) {
+          console.warn("🚨 InboxValidationFailed detected (create)! Triggering OPFS clear and reboot...");
+          localStorage.setItem("xmtp_force_recover", "true");
+          window.location.reload();
         }
       }
     }
@@ -1857,6 +2051,14 @@ function App() {
                         style={{ color: 'var(--accent)', marginRight: '8px' }}
                       >
                         🤝 Verify Date
+                      </button>
+                      <button 
+                        className="text-btn" 
+                        onClick={forceNewRoom}
+                        style={{ color: 'var(--error, #ff4444)', marginRight: '8px', fontSize: '0.75rem', border: '1px solid rgba(255,68,68,0.3)', borderRadius: '4px', padding: '4px 8px' }}
+                        title="Force creation of a fresh chat room if messages aren't delivering"
+                      >
+                        ⚙️ Troubleshoot
                       </button>
                       <StatusBadge status="verified" label="Staked" />
                     </div>

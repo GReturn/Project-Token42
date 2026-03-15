@@ -151,7 +151,22 @@ export class Token42Agent {
         try {
             if (!this.xmtpClient) return;
             const cleanAddr = recipientAddress.toLowerCase();
-            const conversation = await this.xmtpClient.conversations.createDm(cleanAddr);
+
+            // Resolve Ethereum address to XMTP inbox ID (createDm requires inbox ID, not address)
+            const { createBackend, getInboxIdForIdentifier } = await import('@xmtp/node-sdk');
+            const backend = await createBackend({ env: "dev" });
+            let inboxId = await getInboxIdForIdentifier(backend, {
+                identifier: cleanAddr,
+                identifierKind: 0 as any
+            });
+
+            if (!inboxId) {
+                console.warn(`⚠️ No XMTP identity found for ${cleanAddr}, skipping notification.`);
+                return;
+            }
+
+            console.log(`📬 Resolved inbox ID for ${cleanAddr}: ${inboxId.substring(0, 12)}...`);
+            const conversation = await this.xmtpClient.conversations.createDm(inboxId);
             const encoded = await encodeText(message);
             await conversation.send(encoded);
             console.log(`✅ XMTP V3 notification sent to ${cleanAddr}`);
@@ -262,7 +277,8 @@ export class Token42Agent {
             return {
                 matchAddress: topMatch.address,
                 score: Math.floor(topMatch.score * 10000),
-                signature: signature
+                signature: signature,
+                agentInboxId: this.xmtpClient?.inboxId
             };
         }
 
