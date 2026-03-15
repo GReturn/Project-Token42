@@ -213,12 +213,14 @@ function App() {
 
         recipients.forEach(async (addr) => {
           try {
-            const cid = await profileContract.getProfileCID(addr);
-            if (cid) {
-              const metadata = await fetchFromIPFS(cid); // Uses JSON cache
-              if (metadata.avatar) {
-                const url = await fetchImageFromIPFS(metadata.avatar); // Uses Image cache
-                setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
+            if (await profileContract.hasProfile(addr)) {
+              const cid = await profileContract.getProfileCID(addr);
+              if (cid) {
+                const metadata = await fetchFromIPFS(cid); // Uses JSON cache
+                if (metadata.avatar) {
+                  const url = await fetchImageFromIPFS(metadata.avatar); // Uses Image cache
+                  setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
+                }
               }
             }
           } catch (err) {
@@ -277,23 +279,25 @@ function App() {
               changed = true;
 
               try {
-                const cid = await profileContract.getProfileCID(checksummedPartner);
-                if (cid) {
-                  const metadata = await fetchFromIPFS(cid);
-                  if (metadata.avatar) {
-                    const url = await fetchImageFromIPFS(metadata.avatar);
-                    setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
+                if (await profileContract.hasProfile(checksummedPartner)) {
+                  const cid = await profileContract.getProfileCID(checksummedPartner);
+                  if (cid) {
+                    const metadata = await fetchFromIPFS(cid);
+                    if (metadata.avatar) {
+                      const url = await fetchImageFromIPFS(metadata.avatar);
+                      setCachedAvatarUrls(prev => ({ ...prev, [metadata.avatar!]: url }));
+                    }
+                    setMatches(prev => {
+                      if (prev.some(m => m.matchAddress.toLowerCase() === partner)) return prev;
+                      return [...prev, {
+                        matchAddress: checksummedPartner,
+                        matchBio: metadata.bio,
+                        matchName: metadata.name,
+                        avatar: metadata.avatar,
+                        score: 10000
+                      }];
+                    });
                   }
-                  setMatches(prev => {
-                    if (prev.some(m => m.matchAddress.toLowerCase() === partner)) return prev;
-                    return [...prev, {
-                      matchAddress: checksummedPartner,
-                      matchBio: metadata.bio,
-                      matchName: metadata.name,
-                      avatar: metadata.avatar,
-                      score: 10000
-                    }];
-                  });
                 }
               } catch (e) {
                 console.warn("Match metadata restoration failed for", partner);
@@ -358,6 +362,8 @@ function App() {
         setProfile(metadata);
         setInitialProfile(metadata);
         if (step === 'connect') setStep('matching');
+      } else {
+        if (step === 'connect') setStep('profile');
       }
     } catch (e) { console.error("Profile check failed", e); }
   };
@@ -789,19 +795,21 @@ function App() {
                   try {
                     const provider = new ethers.BrowserProvider((window as any).ethereum);
                     const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
-                    const cid = await profileContract.getProfileCID(partnerAddress);
-                    if (cid) {
-                      const metadata = await fetchFromIPFS(cid);
-                      setMatches(prev => {
-                        if (prev.some(m => m.matchAddress.toLowerCase() === partnerAddress.toLowerCase())) return prev;
-                        return [...prev, {
-                          matchAddress: partnerAddress,
-                          matchName: metadata.name,
-                          matchBio: metadata.bio,
-                          avatar: metadata.avatar,
-                          score: 10000
-                        }];
-                      });
+                    if (await profileContract.hasProfile(partnerAddress)) {
+                      const cid = await profileContract.getProfileCID(partnerAddress);
+                      if (cid) {
+                        const metadata = await fetchFromIPFS(cid);
+                        setMatches(prev => {
+                          if (prev.some(m => m.matchAddress.toLowerCase() === partnerAddress.toLowerCase())) return prev;
+                          return [...prev, {
+                            matchAddress: partnerAddress,
+                            matchName: metadata.name,
+                            matchBio: metadata.bio,
+                            avatar: metadata.avatar,
+                            score: 10000
+                          }];
+                        });
+                      }
                     }
                   } catch (e) {
                     console.warn("Match metadata restoration failed for", partnerAddress);
@@ -847,19 +855,21 @@ function App() {
                   try {
                     const provider = new ethers.BrowserProvider((window as any).ethereum);
                     const profileContract = new ethers.Contract(PROFILE_CONTRACT_ADDRESS, PROFILE_ABI, provider);
-                    const cid = await profileContract.getProfileCID(partnerAddress);
-                    if (cid) {
-                      const metadata = await fetchFromIPFS(cid);
-                      setMatches(prev => {
-                        if (prev.some(m => m.matchAddress.toLowerCase() === partnerAddress.toLowerCase())) return prev;
-                        return [...prev, {
-                          matchAddress: partnerAddress,
-                          matchName: metadata.name,
-                          matchBio: metadata.bio,
-                          avatar: metadata.avatar,
-                          score: 10000
-                        }];
-                      });
+                    if (await profileContract.hasProfile(partnerAddress)) {
+                      const cid = await profileContract.getProfileCID(partnerAddress);
+                      if (cid) {
+                        const metadata = await fetchFromIPFS(cid);
+                        setMatches(prev => {
+                          if (prev.some(m => m.matchAddress.toLowerCase() === partnerAddress.toLowerCase())) return prev;
+                          return [...prev, {
+                            matchAddress: partnerAddress,
+                            matchName: metadata.name,
+                            matchBio: metadata.bio,
+                            avatar: metadata.avatar,
+                            score: 10000
+                          }];
+                        });
+                      }
                     }
                   } catch (e) { console.warn("Failed to resolve profile for new conversation:", partnerAddress); }
                 }
@@ -1214,12 +1224,13 @@ function App() {
         }
         // Fetch full metadata for the match to get the avatar
         try {
-          const metadata = await fetchFromIPFS(data.matchCid || potentialMatches.find(m => m.address === data.matchAddress)?.cid);
+          const matchCid = data.matchCid || potentialMatches.find(m => m.address.toLowerCase() === data.matchAddress.toLowerCase())?.cid;
+          const metadata = await fetchFromIPFS(matchCid);
           setMatches([{
             ...data,
             avatar: metadata.avatar,
-            name: metadata.name,
-            bio: metadata.bio
+            matchName: metadata.name,
+            matchBio: metadata.bio
           }]);
 
           if (metadata.avatar) {
@@ -2025,7 +2036,7 @@ function App() {
                       </div>
                       <div className="match-info">
                         <h3>{m.matchAddress.slice(0, 10)}...{m.matchAddress.slice(-6)}</h3>
-                        <p>{m.matchBio || "Matching personality profile..."}</p>
+                        <p>{m.matchBio || "No bio available."}</p>
                       </div>
                       <div className="match-score-ring">
                         <svg viewBox="0 0 36 36">
