@@ -44,7 +44,7 @@ const ESCROW_ABI = [
   "function submitProof(address partner, bytes signature) public",
   "function cancelDate(address partner) public",
   "function resolveExpired(address partner) public",
-  "function dates(bytes32 dateId) public view returns (address userA, address userB, uint256 startTime, uint256 amountA, uint256 amountB, bool proofA, bool proofB, uint8 status)"
+  "function dates(bytes32 dateId) public view returns (address userA, address userB, uint256 startTime, uint256 amountA, uint256 amountB, bool proofA, bool proofB, bool cancelA, bool cancelB, uint8 status)"
 ];
 
 const ERC20_ABI = [
@@ -1016,10 +1016,13 @@ function App() {
     };
   }, [xmtpClient]);
 
-  // Check stake status when active chat changes
+  // Check stake status and date status when active chat changes
   useEffect(() => {
     if (activeChat && address) {
       checkStakeStatus(activeChat);
+      checkDateStatus(activeChat); // Initial check
+      const interval = setInterval(() => checkDateStatus(activeChat), 12000);
+      return () => clearInterval(interval);
     }
   }, [activeChat, address]);
 
@@ -1508,7 +1511,9 @@ function App() {
         amountB: data[4],
         proofA: data[5],
         proofB: data[6],
-        status: Number(data[7])
+        cancelA: data[7],
+        cancelB: data[8],
+        status: Number(data[9])
       });
     } catch (e) {
       console.error("Failed to check date status:", e);
@@ -2206,14 +2211,17 @@ function App() {
                     </div>
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                       <button
-                        className="text-btn"
+                        className="text-btn date-action-btn"
                         onClick={() => {
                           checkDateStatus(activeChat);
                           setIsPoRLModalOpen(true);
                         }}
-                        style={{ color: 'var(--accent)', marginRight: '8px' }}
+                        style={{ color: 'var(--accent)', marginRight: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
                       >
-                        🤝 Verify Date
+                        <span>❤️</span>
+                        <span className="btn-text" style={{ fontSize: '0.85rem' }}>
+                          {dateEscrowStatus?.status === 2 ? 'Verify Date' : 'Propose Date'}
+                        </span>
                       </button>
 
                       <div style={{ position: 'relative' }}>
@@ -2324,6 +2332,24 @@ function App() {
                           </div>
                         </div>
                       )}
+
+                      {/* Centered Date Proposed Overlay */}
+                      {dateEscrowStatus?.status === 1 && dateEscrowStatus.userB.toLowerCase() === address?.toLowerCase() && (
+                        <div className="chat-lock-overlay animate-in" style={{ background: 'rgba(10, 10, 10, 0.95)' }}>
+                          <div className="chat-lock-content">
+                            <div className="lock-icon-large">❤️</div>
+                            <h3>Date Proposed!</h3>
+                            <p>Your match has proposed a date escrow meetup. Stake 10 rUSD to confirm.</p>
+                            <button
+                              className="primary-btn"
+                              onClick={() => { setIsPoRLModalOpen(true); }}
+                              style={{ width: 'auto', padding: '0.8rem 2rem', marginTop: '1rem', background: 'var(--accent)', color: '#000' }}
+                            >
+                              Review Proposal →
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className={`chat-input-bar ${hasActiveStake ? 'locked' : ''}`}>
@@ -2389,6 +2415,7 @@ function App() {
           onSubmitProof={submitDateProof}
           onCancelDate={cancelDate}
           onResolveExpired={resolveExpired}
+          onProposeDate={() => proposeDate(activeChat)}
         />
       )}
       {isMatchLockModalOpen && (

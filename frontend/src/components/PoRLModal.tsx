@@ -13,6 +13,7 @@ interface PoRLModalProps {
   onAcceptDate: () => Promise<void>;
   onCancelDate: (partner: string) => Promise<void>;
   onResolveExpired: (partner: string) => Promise<void>;
+  onProposeDate?: () => Promise<void>;
 }
 
 const PoRLModal: React.FC<PoRLModalProps> = ({ 
@@ -23,7 +24,8 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
   onSubmitProof,
   onAcceptDate,
   onCancelDate,
-  onResolveExpired
+  onResolveExpired,
+  onProposeDate
 }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [mySignature, setMySignature] = useState<string | null>(null);
@@ -85,6 +87,26 @@ const PoRLModal: React.FC<PoRLModalProps> = ({
             <h2 style={{ margin: 0 }}>Date Verification</h2>
             {getStatusLabel(status.status)}
           </div>
+
+          {status.status === 0 && (
+            <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🤝</div>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
+                No active date escrow found for this match.
+              </p>
+              <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', textAlign: 'left' }}>
+                <p style={{ fontSize: '0.9rem', margin: 0, lineHeight: '1.4' }}>
+                  💡 **Proposing a date** locks 10 rUSD in secure escrow. 
+                  It is safely returned to you upon successful meetup verification.
+                </p>
+              </div>
+              {onProposeDate && (
+                <button className="primary-btn" onClick={onProposeDate} style={{ width: '100%' }}>
+                  Propose Date & Stake (10 rUSD)
+                </button>
+              )}
+            </div>
+          )}
 
           {status.status === 1 && !isUserB && (
             <div style={{ textAlign: 'center' }}>
