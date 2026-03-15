@@ -710,7 +710,7 @@ function App() {
             const existingConvs = await xmtpClient.conversations.list();
             console.log(`Found ${existingConvs.length} existing conversations:`, existingConvs.map(c => c.id.substring(0, 8)));
 
-            for (const conv of existingConvs) {
+            const promises = existingConvs.map(async (conv) => {
               try {
                 console.log(`Processing group: ${conv.id.substring(0, 8)}...`);
                 const partnerAddress = await resolveSender(conv);
@@ -808,7 +808,8 @@ function App() {
               } catch (convErr) {
                 console.error(`Failed to process group ${conv.id.substring(0, 8)} during reconstruction:`, convErr);
               }
-            }
+            });
+            await Promise.all(promises);
             console.log("✅ Conversation reconstruction complete.");
           } catch (e) {
             console.error("Failed to reconstruct conversations:", e);
