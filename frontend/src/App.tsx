@@ -13,6 +13,7 @@ import PoRLModal from './components/PoRLModal';
 import ReportModal from './components/ReportModal';
 import { compressImage, getCroppedImg } from './utils/images';
 import Cropper from 'react-easy-crop';
+import { Heart, Sparkles, Shield, Camera, MessageCircle, Lock, Gift, User, LogOut, CheckCircle, Search, Flame } from 'lucide-react';
 
 // Contract Addresses (Paseo Asset Hub - PolkaVM)
 const PROFILE_CONTRACT_ADDRESS = import.meta.env.VITE_PROFILE_CONTRACT_ADDRESS || "0x9B9f7569A535Cd2B66EC9B2F5509F5e688Ba92B5";
@@ -1755,27 +1756,24 @@ function App() {
   );
 
   return (
-    <div className="App">
+    <div className="App h-screen overflow-hidden text-brand-light bg-brand-black flex flex-col font-sans">
       {(loading || isConnecting) && (
         <Loading message={isConnecting ? "Connecting Wallet..." : "Processing Transaction..."} />
       )}
       <Toaster
-        position="bottom-center"
-        containerStyle={{
-          bottom: 80, // Offset to stay above the mobile bottom navbar
-        }}
+        position="top-center"
         toastOptions={{
           className: 'glass-toast',
           style: {
-            background: 'rgba(255, 255, 255, 0.1)',
+            background: 'rgba(25, 25, 25, 0.9)',
             backdropFilter: 'blur(12px)',
-            color: '#fff',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
+            color: '#eef0ef',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
             borderRadius: '12px',
           },
           success: {
             iconTheme: {
-              primary: '#00ffa3',
+              primary: '#d12d24',
               secondary: '#fff',
             },
           },
@@ -1783,169 +1781,173 @@ function App() {
       />
       {/* Network Warning Banner */}
       {isWrongNetwork && (
-        <div style={{
-          background: 'rgba(204, 0, 0, 0.9)',
-          color: 'white',
-          padding: '0.8rem 1rem',
-          textAlign: 'center',
-          position: 'fixed',
-          top: 0, left: 0, right: 0,
-          zIndex: 9999,
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: '12px'
-        }}>
-          <span style={{ fontWeight: 'bold' }}>⚠️ Wrong Network Detected</span>
-          <span style={{ fontSize: '0.9rem', opacity: 0.9 }}>Connect to Paseo Asset Hub to interact with the blockchain.</span>
+        <div className="bg-brand-red/90 text-white p-3 text-center fixed top-0 inset-x-0 z-50 flex justify-center items-center gap-3 backdrop-blur-md">
+          <span className="font-bold">⚠️ Wrong Network Detected</span>
+          <span className="text-sm opacity-90 hidden sm:inline">Connect to Paseo Asset Hub to interact with the blockchain.</span>
           <button
             onClick={switchNetwork}
-            className="secondary-btn"
-            style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.85rem' }}
+            className="bg-white/20 text-white border border-white/30 px-3 py-1.5 rounded-md text-sm hover:bg-white/30 transition-colors"
           >
-            Switch to Paseo
+            Switch
           </button>
         </div>
       )}
 
-      {/* Animated Background Orbs */}
-      <div className="orb-bg">
-        <div className="orb orb-1" />
-        <div className="orb orb-2" />
-        <div className="orb orb-3" />
-      </div>
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto no-scrollbar relative w-full pb-20 md:pb-0">
 
-      {/* Navbar - hidden on landing */}
+      {/* Navbar - hidden on landing, maybe hidden entirely on mobile in favor of bottom nav later */}
       {!isLanding && <Navbar address={address} step={step} setStep={setStep} />}
 
       {/* ===== LANDING / HERO ===== */}
       {step === 'connect' && (
-        <section className="hero">
-          <img src="/token42.svg" alt="Token42" className="hero-logo" />
-          <h1 className="hero-title">Token42</h1>
-          <p className="hero-subtitle">
-            Verifiable Identity. AI Matching. Staked Connections — built on Polkadot.
-          </p>
-          <button className="hero-cta" onClick={connectWallet}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg>
-            Connect Wallet
-          </button>
-          <div className="hero-features">
-            <div className="hero-feature">
-              <div className="hero-feature-icon">🛡️</div>
-              <span className="hero-feature-text">Soulbound Identity</span>
+        <section className="flex flex-col items-center justify-center min-h-[100dvh] p-6 lg:p-12 relative z-10 override-landing-bg">
+          {/* Subtle background glow */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-red/10 rounded-full blur-[120px] pointer-events-none"></div>
+          
+          <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-24 items-center">
+            {/* Left Column: Text Content */}
+            <div className="flex flex-col items-center lg:items-start text-center lg:text-left order-2 lg:order-1">
+              <h1 className="font-serif text-[clamp(3rem,10vw,6rem)] font-black tracking-tighter leading-none text-brand-red mb-6 animate-fade-slide-up">
+                Token42
+              </h1>
+              <p className="text-[clamp(1.2rem,4vw,1.8rem)] text-brand-light/90 max-w-[550px] leading-tight font-bold mb-10 animate-fade-slide-up [animation-delay:100ms]">
+                Match. Stake. Connect. <br className="hidden sm:block" />
+                A decentralized dating experience.
+              </p>
+              <button
+                className="w-full max-w-[320px] py-5 px-10 bg-brand-red hover:bg-brand-darkred text-white font-bold text-xl rounded-full shadow-[0_4px_30px_rgba(255,131,116,0.4)] transition-all duration-300 hover:scale-[1.05] active:scale-[0.95] flex items-center justify-center gap-3 animate-fade-slide-up [animation-delay:200ms]"
+                onClick={connectWallet}
+              >
+                <Sparkles className="w-6 h-6" />
+                Connect & Begin
+              </button>
+
+              <div className="flex gap-8 mt-16 justify-center lg:justify-start animate-fade-slide-up [animation-delay:300ms]">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-14 h-14 flex items-center justify-center rounded-2xl bg-brand-dark border border-white/10 text-brand-red shadow-lg transition-transform hover:-translate-y-1">
+                    <Heart className="w-7 h-7" />
+                  </div>
+                  <span className="text-sm text-brand-light/70 font-bold">Genuine</span>
+                </div>
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-14 h-14 flex items-center justify-center rounded-2xl bg-brand-dark border border-white/10 text-brand-red shadow-lg transition-transform hover:-translate-y-1">
+                    <Shield className="w-7 h-7" />
+                  </div>
+                  <span className="text-sm text-brand-light/70 font-bold">Private</span>
+                </div>
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-14 h-14 flex items-center justify-center rounded-2xl bg-brand-dark border border-white/10 text-brand-red shadow-lg transition-transform hover:-translate-y-1">
+                    <User className="w-7 h-7" />
+                  </div>
+                  <span className="text-sm text-brand-light/70 font-bold">Verified</span>
+                </div>
+              </div>
             </div>
-            <div className="hero-feature">
-              <div className="hero-feature-icon">🧠</div>
-              <span className="hero-feature-text">AI Personality Match</span>
-            </div>
-            <div className="hero-feature">
-              <div className="hero-feature-icon">💎</div>
-              <span className="hero-feature-text">Staked Messaging</span>
+
+            {/* Right Column: Logo */}
+            <div className="flex justify-center items-center order-1 lg:order-2 animate-fade-slide-up">
+              <div className="relative">
+                {/* Extra layer of glow for the logo */}
+                 <div className="absolute inset-0 bg-brand-red/20 blur-3xl rounded-full animate-pulse-soft"></div>
+                 <img 
+                   src="/token42.png" 
+                   alt="Token42" 
+                   className="w-[clamp(250px,40vw,500px)] h-auto rounded-full animate-pulse-soft relative z-10 p-4" 
+                 />
+              </div>
             </div>
           </div>
         </section>
       )}
-
       {/* ===== PROFILE CREATION ===== */}
       {step === 'profile' && (
-        <main className="main">
-          <div className="page-brand mobile-only">
-            <img src="/token42.svg" alt="Token42" />
-            <span className="logo-text">Token42</span>
+        <main className="w-full max-w-xl mx-auto p-4 sm:p-6 pb-24 relative z-10 animate-in">
+          <div className="flex items-center gap-2 font-extrabold text-xl tracking-tighter mb-6 text-brand-red">
+            <img src="/token42.png" alt="Token42" className="w-6 h-6" />
+            <span className="font-serif">Setup Profile</span>
           </div>
-          <div className="dashboard-grid animate-in">
-            <GlassCard>
+          
+          <div className="flex flex-col gap-6">
+            <div className="bg-brand-dark rounded-2xl p-5 border border-white/5 shadow-lg">
 
-              <div className="card-header">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <h2 style={{ margin: 0 }}>Profile</h2>
-                  <StatusBadge status="verified" label="Verified" />
-                </div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                  Identity verified via People Chain
-                </p>
-              </div>
-
-              <div className="profile-stats" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
-                <div className="stat-item">
-                  <span className="stat-value" style={{ display: 'block', fontSize: '1.2rem', fontWeight: 'bold' }}>{matches.length}</span>
-                  <span className="stat-label" style={{ fontSize: '0.8rem', opacity: 0.7 }}>Matches</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-value" style={{ display: 'block', fontSize: '1.2rem', fontWeight: 'bold' }}>{Object.keys(chatMessages).length}</span>
-                  <span className="stat-label" style={{ fontSize: '0.8rem', opacity: 0.7 }}>Chats</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-value" style={{ display: 'block', fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>{parseFloat(rusdBalance).toFixed(2)}</span>
-                  <span className="stat-label" style={{ fontSize: '0.8rem', opacity: 0.7 }}>rUSD</span>
-                </div>
-                <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <button
-                    className="text-btn"
-                    onClick={getFaucetrUSD}
-                    disabled={loading}
-                    style={{ fontSize: '0.75rem', padding: '4px 8px', border: '1px solid var(--accent)', borderRadius: '4px' }}
-                  >
-                    {loading ? "..." : "🪙 Faucet"}
-                  </button>
-                  <button
-                    className="text-btn"
-                    onClick={revokeXmtpInstallations}
-                    style={{ fontSize: '0.65rem', opacity: 0.5, border: 'none', background: 'transparent' }}
-                  >
-                    Rescue XMTP
-                  </button>
-                  <button
-                    className="text-btn"
-                    onClick={clearXmtpOpfs}
-                    style={{ fontSize: '0.65rem', opacity: 0.5, border: 'none', background: 'transparent', color: 'var(--error, #ff4444)' }}
-                  >
-                    Clear XMTP DB
-                  </button>
+              <div className="mb-6 border-b border-white/5 pb-5">
+                <div className="flex justify-between items-center mb-2">
+                  <h2 className="text-xl font-bold tracking-tight text-brand-light m-0">Your Details</h2>
+                  <StatusBadge status="verified" label="Identity Verified" />
                 </div>
               </div>
 
-              <div className="input-group">
-                <label className="input-label">Profile Photo</label>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  {localAvatarPreview || profile.avatar ? (
-                    <img
-                      src={localAvatarPreview || cachedAvatarUrls[profile.avatar!] || `https://gateway.pinata.cloud/ipfs/${profile.avatar}`}
-                      className="avatar-upload-preview"
-                      alt="Avatar Preview"
-                      onClick={() => document.getElementById('avatar-input')?.click()}
-                    />
-                  ) : (
-                    <div className="avatar-placeholder" onClick={() => document.getElementById('avatar-input')?.click()}>
-                      <span style={{ fontSize: '2rem' }}>📸</span>
+              {/* Wallet & Stats Strip */}
+              <div className="flex justify-between items-center bg-black/30 rounded-xl p-3 mb-6 border border-white/5">
+                <div className="flex gap-4">
+                  <div className="text-center">
+                    <span className="block text-sm font-bold text-brand-light">{matches.length}</span>
+                    <span className="text-[0.65rem] text-brand-light/50 uppercase">Matches</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="block text-sm font-bold text-brand-light">{Object.keys(chatMessages).length}</span>
+                    <span className="text-[0.65rem] text-brand-light/50 uppercase">Chats</span>
+                  </div>
+                  <div className="text-center border-l border-white/10 pl-4">
+                    <span className="block text-sm font-bold text-brand-red">{parseFloat(rusdBalance).toFixed(2)}</span>
+                    <span className="text-[0.65rem] text-brand-light/50 uppercase">rUSD</span>
+                  </div>
+                </div>
+                <button
+                  className="bg-brand-red/10 text-brand-red hover:bg-brand-red hover:text-white transition-colors p-2 rounded-lg"
+                  onClick={getFaucetrUSD}
+                  disabled={loading}
+                  title="Get testing tokens"
+                >
+                  <Gift className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Avatar Upload */}
+              <div className="flex flex-col items-center mb-8">
+                <div className="relative group cursor-pointer" onClick={() => document.getElementById('avatar-input')?.click()}>
+                  <div className={`w-32 h-32 rounded-full overflow-hidden border-2 border-brand-red p-1 transition-transform ${!profile.avatar && !localAvatarPreview ? 'border-dashed border-white/20' : ''}`}>
+                    <div className="w-full h-full rounded-full bg-brand-black flex items-center justify-center overflow-hidden">
+                      {localAvatarPreview || profile.avatar ? (
+                        <img
+                          src={localAvatarPreview || cachedAvatarUrls[profile.avatar!] || `https://gateway.pinata.cloud/ipfs/${profile.avatar}`}
+                          className="w-full h-full object-cover"
+                          alt="Avatar"
+                        />
+                      ) : (
+                         <Camera className="w-10 h-10 text-white/20" />
+                      )}
                     </div>
-                  )}
-                  <input
-                    type="file"
-                    id="avatar-input"
-                    hidden
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.readAsDataURL(file);
-                      reader.onload = () => {
-                        setImageToCrop(reader.result as string);
-                      };
-                    }}
-                  />
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tap to {profile.avatar || localAvatarPreview ? 'change' : 'upload'}</p>
+                  </div>
+                  <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera className="w-8 h-8 text-white" />
+                  </div>
                 </div>
+                <input
+                  type="file"
+                  id="avatar-input"
+                  hidden
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = () => {
+                      setImageToCrop(reader.result as string);
+                    };
+                  }}
+                />
               </div>
 
               {imageToCrop && (
-                <div className="modal-overlay">
-                  <GlassCard className="modal-content" style={{ height: '550px', display: 'flex', flexDirection: 'column' }}>
-                    <h3 style={{ marginBottom: '1rem' }}>Crop Profile Photo</h3>
-                    <div style={{ flex: 1, position: 'relative', width: '100%', background: '#000', borderRadius: '12px', overflow: 'hidden' }}>
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                  <div className="bg-brand-dark w-full max-w-sm rounded-2xl flex flex-col overflow-hidden border border-white/10 h-[500px]">
+                    <div className="p-4 border-b border-white/10 flex justify-between items-center">
+                      <h3 className="font-bold text-brand-light m-0">Crop Photo</h3>
+                    </div>
+                    <div className="flex-1 relative bg-black">
                       <Cropper
                         image={imageToCrop}
                         crop={crop}
@@ -1956,8 +1958,7 @@ function App() {
                         onZoomChange={setZoom}
                       />
                     </div>
-                    <div style={{ padding: '1rem 0' }}>
-                      <label className="input-label" style={{ fontSize: '0.8rem' }}>Zoom</label>
+                    <div className="p-4 bg-brand-dark">
                       <input
                         type="range"
                         value={zoom}
@@ -1965,498 +1966,479 @@ function App() {
                         max={3}
                         step={0.1}
                         onChange={(e) => setZoom(Number(e.target.value))}
-                        style={{ width: '100%' }}
+                        className="w-full accent-brand-red mb-4"
                       />
+                      <div className="flex gap-3">
+                        <button className="flex-1 py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-brand-light transition-colors" onClick={() => setImageToCrop(null)}>Cancel</button>
+                        <button className="flex-1 py-3 px-4 rounded-xl bg-brand-red hover:bg-brand-darkred text-white font-bold transition-colors" onClick={handleCropConfirm}>Confirm</button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                      <button className="text-btn" onClick={() => setImageToCrop(null)} style={{ flex: 1 }}>Cancel</button>
-                      <button className="primary-btn" onClick={handleCropConfirm} style={{ flex: 2 }}>Confirm Crop</button>
-                    </div>
-                  </GlassCard>
+                  </div>
                 </div>
               )}
 
-              <div className="input-group">
-                <label className="input-label">Display Name</label>
+              {/* Form Inputs */}
+              <div className="mb-5">
+                <label className="block mb-2 text-brand-light/60 text-xs font-semibold tracking-wide uppercase">First Name</label>
                 <input
                   type="text"
-                  className="rich-input"
+                  className="w-full bg-black/30 border border-white/10 rounded-xl py-3.5 px-4 text-brand-light focus:outline-none focus:border-brand-red focus:ring-1 focus:ring-brand-red transition-all"
                   placeholder="What should we call you?"
                   value={profile.name}
                   onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                 />
               </div>
 
-              <div className="input-group">
-                <label className="input-label">Bio</label>
+              <div className="mb-6">
+                <label className="block mb-2 text-brand-light/60 text-xs font-semibold tracking-wide uppercase">About Me</label>
                 <textarea
-                  placeholder="Share a bit about yourself, your passions, what you're looking for..."
-                  className="rich-input"
-                  style={{ minHeight: '140px', resize: 'vertical' }}
+                  placeholder="Share a bit about yourself..."
+                  className="w-full bg-black/30 border border-white/10 rounded-xl py-3.5 px-4 text-brand-light focus:outline-none focus:border-brand-red focus:ring-1 focus:ring-brand-red transition-all min-h-[120px] resize-none"
                   value={profile.bio}
                   onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
                   disabled={loading}
                   maxLength={500}
                 />
-                <div className="char-count">{profile.bio.length}/500</div>
+                <div className="text-right text-xs text-brand-light/40 mt-1">{profile.bio.length}/500</div>
               </div>
 
               <button
                 onClick={createProfile}
-                className="primary-btn"
+                className="w-full py-4 px-6 bg-brand-red hover:bg-brand-darkred text-white font-bold rounded-xl transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex justify-center items-center"
                 disabled={loading || !profile.bio || (userCID ? !hasChanges : false)}
               >
                 {loading ? (
-                  <span className="loading-pulse">{userCID ? "Updating Profile..." : "Minting Soulbound Token..."}</span>
+                  <span className="flex items-center gap-2 animate-pulse"><Sparkles className="w-5 h-5"/> Processing...</span>
                 ) : (
-                  userCID ? (hasChanges ? "Update Profile →" : "No Changes Detected") : "Mint Soulbound Profile →"
+                  userCID ? (hasChanges ? "Update Profile" : "Profile Up To Date") : "Complete Setup"
                 )}
               </button>
+              
+              <div className="mt-8 pt-4 border-t border-white/5 flex flex-wrap gap-2 justify-center">
+                <button
+                    className="text-xs text-brand-light/40 hover:text-brand-light px-3 py-1.5 rounded-md bg-white/5 transition-colors flex items-center gap-1"
+                    onClick={revokeXmtpInstallations}
+                  >
+                    <Lock className="w-3 h-3" /> Rescue XMTP
+                </button>
+                <button
+                    className="text-xs text-brand-red/70 hover:text-brand-red px-3 py-1.5 rounded-md bg-brand-red/10 transition-colors flex items-center gap-1"
+                    onClick={clearXmtpOpfs}
+                  >
+                    <LogOut className="w-3 h-3" /> Clear Db
+                </button>
+              </div>
 
-            </GlassCard>
-
-            <aside>
-              <GlassCard className="sidebar-card">
-                <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>How it works</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {[
-                    { icon: '🔐', title: 'Verify', desc: 'Your Polkadot identity is checked on-chain' },
-                    { icon: '🎭', title: 'Mint', desc: 'A non-transferable soulbound token is created' },
-                    { icon: '🤖', title: 'Match', desc: 'AI processes your personality vectors privately' },
-                  ].map((item, i) => (
-                    <div key={i} style={{ display: 'flex', gap: '0.75rem', alignItems: 'start' }}>
-                      <span style={{ fontSize: '1.3rem' }}>{item.icon}</span>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{item.title}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.desc}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </GlassCard>
-              <GlassCard className="sidebar-card">
-                <h3 style={{ marginBottom: '0.75rem', fontSize: '1.1rem' }}>Your Wallet</h3>
-                <div className="cid-display">{address}</div>
-              </GlassCard>
-            </aside>
+            </div>
           </div>
         </main>
       )}
 
       {/* ===== DISCOVERY / MATCHING ===== */}
       {step === 'matching' && (
-        <main className="main">
-          <div className="page-brand mobile-only">
-            <img src="/token42.svg" alt="Token42" />
-            <span className="logo-text">Token42</span>
-          </div>
-          <div className="dashboard-grid animate-in">
+        <main className="flex-1 p-4 sm:p-6 pb-24 max-w-3xl mx-auto w-full relative z-10 animate-in">
+          
+          <div className="flex justify-between items-center mb-6 px-2">
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <div>
-                  <h2 style={{ margin: 0, fontWeight: 700, letterSpacing: '-0.5px' }}>Discovery</h2>
-                  <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>AI-guided matches based on personality vectors</p>
-                </div>
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  {!isProfileComplete && (
-                    <button
-                      className="lock-info-btn"
-                      onClick={() => setIsMatchLockModalOpen(true)}
-                      title="Profile Incomplete"
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-                    </button>
-                  )}
-                  <button
-                    onClick={findMatches}
-                    className="primary-btn"
-                    style={{ width: 'auto', padding: '0.7rem 1.5rem' }}
-                    disabled={loading || !isProfileComplete}
-                  >
-                    {loading ? <span className="loading-pulse">Scanning...</span> : "Find Matches"}
-                  </button>
-                </div>
+              <div className="flex items-center gap-2 font-extrabold text-xl tracking-tighter text-brand-red mb-1">
+                <img src="/token42.png" alt="Token42" className="w-6 h-6" />
+                <span className="font-serif">Discovery</span>
               </div>
-
-              {matches.length === 0 && !loading && (
-                <GlassCard>
-                  <div className="empty-state">
-                    <div className="empty-state-icon">🔍</div>
-                    <p>Hit <strong>Find Matches</strong> to let the AI analyze compatible profiles near you.</p>
-                  </div>
-                </GlassCard>
+              <p className="text-brand-light/60 text-sm">Find your next connection</p>
+            </div>
+            
+            <div className="flex gap-3 items-center">
+              {!isProfileComplete && (
+                <button
+                  className="p-2.5 bg-brand-red/10 border border-brand-red/20 rounded-xl text-brand-red hover:bg-brand-red hover:text-white transition-colors"
+                  onClick={() => setIsMatchLockModalOpen(true)}
+                  title="Profile Incomplete"
+                >
+                  <Lock className="w-5 h-5" />
+                </button>
               )}
+              <button
+                onClick={findMatches}
+                className="py-2.5 px-5 bg-brand-red hover:bg-brand-darkred text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-[0_4px_15px_rgba(209,45,36,0.2)]"
+                disabled={loading || !isProfileComplete}
+              >
+                {loading ? <span className="animate-pulse">Scanning...</span> : (
+                  <>
+                    <Search className="w-4 h-4" />
+                    Find Matches
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
 
-              {loading && matches.length === 0 && (
-                <GlassCard>
-                  <div className="empty-state loading-pulse">
-                    <div className="empty-state-icon">🧠</div>
-                    <p>Deep-Thought AI is analyzing personality vectors...</p>
-                  </div>
-                </GlassCard>
-              )}
+          <div className="flex flex-col gap-6">
+            {matches.length === 0 && !loading && (
+              <div className="bg-brand-dark border border-white/5 rounded-3xl p-10 flex flex-col items-center text-center">
+                <div className="w-20 h-20 rounded-full bg-brand-red/10 flex items-center justify-center mb-6 text-brand-red">
+                  <Sparkles className="w-10 h-10" />
+                </div>
+                <h3 className="text-xl font-bold text-brand-light mb-2">Ready to Mingle?</h3>
+                <p className="text-brand-light/60 max-w-[280px]">Tap 'Find Matches' to let your AI Cupid discover curated potential connections.</p>
+              </div>
+            )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {loading && matches.length === 0 && (
+              <div className="bg-brand-dark border border-white/5 rounded-3xl p-10 flex flex-col items-center text-center animate-pulse">
+                <div className="w-20 h-20 rounded-full bg-brand-red/10 flex items-center justify-center mb-6 text-brand-red">
+                  <Heart className="w-10 h-10 animate-ping" />
+                </div>
+                <h3 className="text-xl font-bold text-brand-light mb-2">Analyzing Compatibility...</h3>
+                <p className="text-brand-light/60">Searching the network for high-intent matches.</p>
+              </div>
+            )}
+
+            {matches.length > 0 && (
+              <div className="relative w-full max-w-md mx-auto h-[650px]">
+                {/* Tinder-like stacked cards effect */}
                 {matches.map((m, i) => (
-                  <GlassCard key={i} className="match-card animate-in">
-                    <div className="match-card-body">
-                      <div className={`match-avatar ${!revealedUsers.has(m.matchAddress.toLowerCase()) ? 'blurred' : ''}`}>
+                  <div 
+                    key={i} 
+                    className="absolute inset-0 w-full h-full bg-brand-dark rounded-3xl overflow-hidden border border-white/10 shadow-2xl animate-in"
+                    style={{
+                      zIndex: matches.length - i,
+                      transform: `scale(${1 - i * 0.05}) translateY(${i * 15}px)`,
+                      opacity: 1 - i * 0.2
+                    }}
+                  >
+                    <div className="absolute inset-x-0 top-0 h-2/3 bg-black">
+                       <div className={`w-full h-full ${!revealedUsers.has(m.matchAddress.toLowerCase()) ? 'blur-md scale-110' : ''} transition-all duration-500`}>
                         {m.avatar ? (
-                          <img src={cachedAvatarUrls[m.avatar] || `https://gateway.pinata.cloud/ipfs/${m.avatar}`} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                          <img src={cachedAvatarUrls[m.avatar] || `https://gateway.pinata.cloud/ipfs/${m.avatar}`} alt="" className="w-full h-full object-cover" />
                         ) : (
-                          m.matchAddress ? m.matchAddress.slice(2, 4).toUpperCase() : '??'
+                          <div className="w-full h-full flex flex-col items-center justify-center opacity-50">
+                            <User className="w-24 h-24 mb-4" />
+                            <span className="font-mono">{m.matchAddress.slice(2, 6).toUpperCase()}</span>
+                          </div>
                         )}
                       </div>
-                      <div className="match-info">
-                        <h3>{m.matchAddress.slice(0, 10)}...{m.matchAddress.slice(-6)}</h3>
-                        <p>{m.matchBio || "No bio available."}</p>
-                      </div>
-                      <div className="match-score-ring">
-                        <svg viewBox="0 0 36 36">
-                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3" />
-                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--accent)" strokeWidth="3"
-                            strokeDasharray={`${(m.score / 10000) * 97.4} 97.4`}
-                            strokeLinecap="round" />
-                        </svg>
-                        <span className="score-text">{(m.score / 100).toFixed(1)}%</span>
+                      <div className="absolute inset-0 bg-gradient-to-t from-brand-dark via-brand-dark/20 to-transparent"></div>
+                    </div>
+
+                    <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-brand-dark via-brand-dark to-brand-dark/95 backdrop-blur-sm">
+                       <div className="flex justify-between items-end mb-3">
+                          <h3 className="text-2xl font-bold font-sans text-brand-light">
+                             {m.matchName || "Anonymous"} 
+                             <span className="text-brand-light/40 font-mono text-sm ml-2 font-normal">{m.matchAddress.slice(0, 6)}</span>
+                          </h3>
+                          <div className="flex flex-col items-center justify-center bg-black/40 rounded-full w-14 h-14 border border-brand-red/30">
+                            <span className="text-xs text-brand-light/60 font-semibold mb-0.5">Match</span>
+                            <span className="text-sm font-extrabold text-brand-red">{(m.score / 100).toFixed(0)}%</span>
+                          </div>
+                       </div>
+                       
+                       <p className="text-sm text-brand-light/70 leading-relaxed line-clamp-3 mb-6 min-h-[60px]">
+                         {m.matchBio || "This user is quite mysterious. No bio provided."}
+                       </p>
+
+                       <div className="flex gap-4">
+                        {chatMessages[m.matchAddress] || Object.keys(chatMessages).some(k => k.toLowerCase() === m.matchAddress.toLowerCase()) ? (
+                          <button
+                            onClick={() => {
+                              const actualKey = Object.keys(chatMessages).find(k => k.toLowerCase() === m.matchAddress.toLowerCase()) || m.matchAddress;
+                              setActiveChat(actualKey);
+                              setStep('chat');
+                            }}
+                            className="w-full py-4 text-center bg-brand-red hover:bg-brand-darkred text-white font-bold rounded-2xl transition-all shadow-[0_4px_15px_rgba(209,45,36,0.3)] hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                          >
+                            <MessageCircle className="w-5 h-5" />
+                            Open Chat
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => stakeAndMessage(m)} 
+                            className="w-full py-4 text-center bg-brand-red hover:bg-brand-darkred text-white font-bold rounded-2xl transition-all shadow-[0_4px_15px_rgba(209,45,36,0.3)] hover:-translate-y-0.5 flex items-center justify-center gap-2" 
+                            disabled={loading}
+                          >
+                            <Gift className="w-5 h-5" />
+                            {loading ? "Staking..." : "Stake to Connect"}
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <div className="match-actions">
-                      {chatMessages[m.matchAddress] || Object.keys(chatMessages).some(k => k.toLowerCase() === m.matchAddress.toLowerCase()) ? (
-                        <button
-                          onClick={() => {
-                            const actualKey = Object.keys(chatMessages).find(k => k.toLowerCase() === m.matchAddress.toLowerCase()) || m.matchAddress;
-                            setActiveChat(actualKey);
-                            setStep('chat');
-                          }}
-                          className="primary-btn connected-btn"
-                        >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px' }}><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
-                          Go to Chat
-                        </button>
-                      ) : (
-                        <button onClick={() => stakeAndMessage(m)} className="primary-btn" disabled={loading}>
-                          {loading ? "Processing..." : "Stake & Connect"}
-                        </button>
-                      )}
-                    </div>
-                  </GlassCard>
+                  </div>
                 ))}
               </div>
-            </div>
-
-            <aside>
-              <GlassCard className="sidebar-card">
-                <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>Your Identity</h3>
-                <div className="identity-row">
-                  <div className="identity-avatar">
-                    {(localAvatarPreview || profile.avatar) && (
-                      <img
-                        src={localAvatarPreview || cachedAvatarUrls[profile.avatar!] || `https://gateway.pinata.cloud/ipfs/${profile.avatar}`}
-                        alt=""
-                        style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <div className="identity-name">{profile.name || 'Anonymous'}</div>
-                    <StatusBadge status="verified" label="Human" />
-                  </div>
-                </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>{profile.bio}</p>
-              </GlassCard>
-              <GlassCard className="sidebar-card">
-                <div className="input-label" style={{ marginBottom: '0.5rem' }}>Soulbound CID</div>
-                <div className="cid-display">{userCID}</div>
-              </GlassCard>
-            </aside>
+            )}
           </div>
         </main>
       )}
 
       {/* ===== CHAT ===== */}
       {step === 'chat' && (
-        <main className="main chat-page">
-          <div className="page-brand mobile-only">
-            <img src="/token42.svg" alt="Token42" />
-            <span className="logo-text">Token42</span>
-          </div>
-
-          <div className="chat-layout animate-in">
+        <main className="flex-1 w-full relative z-10 flex flex-col h-full overflow-hidden">
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-[400px_1fr] h-full min-h-0 animate-in overflow-hidden border-t border-white/10">
             {/* Chat Sidebar / Mobile Dropdown */}
-            <GlassCard className={`chat-sidebar ${isMobileSessionOpen ? 'mobile-open' : ''}`}>
-              <div
-                className="sidebar-header"
-                onClick={() => setIsMobileSessionOpen(!isMobileSessionOpen)}
+            <div className={`flex flex-col h-full bg-brand-black border-r border-white/5 overflow-hidden transition-all ${isMobileSessionOpen ? 'fixed inset-0 z-[200]' : 'hidden md:flex'}`}>
+              <div 
+                className="p-5 border-b border-white/5 flex justify-between items-center bg-brand-dark md:bg-transparent"
               >
-                <h3>Sessions</h3>
-                <div className="mobile-session-selector">
-                  {activeChat ? (
-                    <div className="active-session-summary">
-                      <div className={`session-avatar tiny ${!revealedUsers.has(activeChat.toLowerCase()) ? 'blurred' : ''}`}>
-                        {activeChat.slice(2, 4).toUpperCase()}
-                      </div>
-                      <span>{activeChat.slice(0, 6)}...{activeChat.slice(-4)}</span>
-                    </div>
-                  ) : <span>Select Chat</span>}
-                  <svg className={`dropdown-icon ${isMobileSessionOpen ? 'open' : ''}`} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                <div className="flex items-center gap-2">
+                   <MessageCircle className="w-5 h-5 text-brand-red" />
+                   <h3 className="font-bold text-lg text-brand-light font-serif">Messages</h3>
                 </div>
+                <button 
+                  className="md:hidden p-2 text-brand-light/60 hover:text-brand-light"
+                  onClick={() => setIsMobileSessionOpen(false)}
+                >
+                  Close
+                </button>
               </div>
 
-              <div className="session-list">
-                {Object.keys(chatMessages).map((addr) => (
-                  <div
-                    key={addr}
-                    className={`session-item ${activeChat === addr ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveChat(addr);
-                      setIsMobileSessionOpen(false);
-                    }}
-                  >
-                    <div className={`session-avatar ${!revealedUsers.has(addr.toLowerCase()) ? 'blurred' : ''}`}>
-                      {matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar ? (
-                        <img
-                          src={cachedAvatarUrls[matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar!] || `https://gateway.pinata.cloud/ipfs/${matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar}`}
-                          alt=""
-                          style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        addr.slice(2, 4).toUpperCase()
-                      )}
-                    </div>
-                    <div className="session-info">
-                      <div className="session-address">{addr.slice(0, 6)}...{addr.slice(-4)}</div>
-                      <div className="session-last-msg">
-                        {chatMessages[addr].length > 0
-                          ? chatMessages[addr][chatMessages[addr].length - 1].text
-                          : "No messages yet"}
+              <div className="flex-1 overflow-y-auto w-full">
+                {Object.keys(chatMessages).length === 0 ? (
+                  <div className="p-6 text-center text-brand-light/40 text-sm">
+                    No active conversations yet. Match with someone to start chatting!
+                  </div>
+                ) : (
+                  Object.keys(chatMessages).map((addr) => (
+                    <div
+                      key={addr}
+                      className={`flex items-center gap-4 p-4 cursor-pointer transition-all duration-200 border-b border-white/5 ${activeChat === addr ? 'bg-brand-red/10 border-l-4 border-l-brand-red' : 'hover:bg-white/5 border-l-4 border-l-transparent'}`}
+                      onClick={() => {
+                        setActiveChat(addr);
+                        setIsMobileSessionOpen(false);
+                      }}
+                    >
+                      <div className={`w-14 h-14 rounded-full bg-brand-dark flex items-center justify-center font-extrabold text-lg text-white flex-shrink-0 border border-white/10 overflow-hidden ${!revealedUsers.has(addr.toLowerCase()) ? 'blur-sm saturate-0' : ''}`}>
+                        {matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar ? (
+                          <img
+                            src={cachedAvatarUrls[matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar!] || `https://gateway.pinata.cloud/ipfs/${matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.avatar}`}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <User className="w-6 h-6 text-brand-light/40" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                         <div className="flex justify-between items-baseline mb-1">
+                           <div className="font-bold truncate text-brand-light font-sans text-base">
+                             {matches.find(m => m.matchAddress.toLowerCase() === addr.toLowerCase())?.matchName || `${addr.slice(0, 6)}...`}
+                           </div>
+                         </div>
+                        <div className="text-sm text-brand-light/50 truncate">
+                          {chatMessages[addr].length > 0
+                            ? chatMessages[addr][chatMessages[addr].length - 1].text
+                            : "New match! Say hello."}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
-            </GlassCard>
+            </div>
 
             {/* Chat Main */}
-            <div className="chat-main-container">
+            <div className="flex bg-brand-dark flex-col h-full relative overflow-hidden">
+               {/* Mobile Header trigger */}
+               <div className="md:hidden p-4 border-b border-white/5 bg-brand-black flex items-center gap-3">
+                 <button onClick={() => setIsMobileSessionOpen(true)} className="p-2 -ml-2 text-brand-red">
+                    <MessageCircle className="w-6 h-6" />
+                 </button>
+                 {activeChat ? (
+                    <div className="font-bold flex-1 text-center truncate pr-8">
+                       {matches.find(m => m.matchAddress.toLowerCase() === activeChat.toLowerCase())?.matchName || `${activeChat.slice(0, 6)}...`}
+                    </div>
+                 ) : (
+                   <div className="font-bold flex-1 text-center text-brand-light/60">Select Chat</div>
+                 )}
+               </div>
+
               {activeChat ? (
                 <>
-                  <div className="chat-external-header">
-                    <div className="chat-header-info">
-                      <div className="chat-recipient-address">
-                        {activeChat.slice(0, 8)}...{activeChat.slice(-6)}
+                  <div className="p-5 border-b border-white/5 bg-black/40 backdrop-blur-md flex justify-between items-center sticky top-0 z-[50]">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-full overflow-hidden border border-white/10 ${!revealedUsers.has(activeChat.toLowerCase()) ? 'blur-sm saturate-0' : ''}`}>
+                         {matches.find(m => m.matchAddress.toLowerCase() === activeChat.toLowerCase())?.avatar ? (
+                            <img
+                              src={cachedAvatarUrls[matches.find(m => m.matchAddress.toLowerCase() === activeChat.toLowerCase())?.avatar!] || `https://gateway.pinata.cloud/ipfs/${matches.find(m => m.matchAddress.toLowerCase() === activeChat.toLowerCase())?.avatar}`}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-brand-dark flex items-center justify-center"><User className="w-6 h-6 text-brand-light/40" /></div>
+                          )}
                       </div>
-                      <p className="chat-verification-msg">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', color: 'var(--accent)' }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                        End-to-end encrypted • Protected Session
-                      </p>
+                      <div>
+                        <div className="text-lg font-bold text-brand-light font-sans flex items-center gap-2">
+                          {matches.find(m => m.matchAddress.toLowerCase() === activeChat.toLowerCase())?.matchName || `${activeChat.slice(0, 8)}...${activeChat.slice(-4)}`}
+                        </div>
+                        <p className="text-xs text-brand-light/50 mt-0.5 font-mono">
+                          {activeChat}
+                        </p>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div className="flex gap-2 items-center">
                       <button
-                        className="text-btn date-action-btn"
+                        className="bg-brand-red/10 text-brand-red hover:bg-brand-red hover:text-white transition-colors p-2.5 rounded-xl disabled:opacity-50 flex items-center gap-2 font-bold text-sm"
                         onClick={() => {
                           checkDateStatus(activeChat);
                           setIsPoRLModalOpen(true);
                         }}
-                        style={{ color: 'var(--accent)', marginRight: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
                         disabled={blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase())}
                       >
-                        <span>❤️</span>
-                        <span className="btn-text" style={{ fontSize: '0.85rem' }}>
-                          {dateEscrowStatus?.status === 2 ? 'Verify Date' : 'Propose Date'}
-                        </span>
+                         <Heart className="w-4 h-4 fill-current" />
+                         <span className="hidden sm:inline">
+                           {dateEscrowStatus?.status === 2 ? 'Verify Date' : 'Ask Out'}
+                         </span>
                       </button>
 
-                      <div style={{ position: 'relative' }}>
+                      <div className="relative">
                         <button
-                          className="text-btn ellipses-btn"
+                          className="bg-black/30 border border-white/10 text-brand-light hover:bg-white/10 p-2.5 rounded-xl transition-all"
                           onClick={() => setIsChatMenuOpen(!isChatMenuOpen)}
-                          style={{ padding: '6px 10px', fontSize: '1.2rem', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', cursor: 'pointer' }}
                           title="More Actions"
                           disabled={blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase())}
                         >
-                          ⋮
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
                         </button>
                         {isChatMenuOpen && (
-                          <GlassCard className="dropdown-menu" style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: 'calc(100% + 8px)',
-                            zIndex: 100,
-                            padding: '0.4rem',
-                            minWidth: '160px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px',
-                            background: 'rgba(20, 20, 20, 0.95)',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            borderRadius: '8px',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
-                          }}>
+                          <div className="absolute right-0 top-[calc(100%+8px)] z-[100] p-2 min-w-[200px] flex flex-col gap-1 bg-brand-dark border border-white/10 rounded-xl shadow-2xl backdrop-blur-md">
                             <button
-                              className="text-btn"
+                               className={`w-full text-left p-3 text-sm rounded-lg transition-colors flex items-center gap-3 ${showRecipientBio ? 'text-brand-red bg-brand-red/10' : 'text-brand-light hover:bg-white/5'}`}
                               onClick={() => { setShowRecipientBio(!showRecipientBio); setIsChatMenuOpen(false); }}
-                              style={{ width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: '0.9rem', color: showRecipientBio ? 'var(--accent)' : 'var(--text-muted)' }}
                             >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px', verticalAlign: 'middle' }}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                              <User className="w-4 h-4" />
                               {showRecipientBio ? 'Hide Bio' : 'View Bio'}
                             </button>
                             <button
-                              className="text-btn"
-                              onClick={() => { forceNewRoom(); setIsChatMenuOpen(false); }}
-                              style={{ width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: '0.9rem', color: 'var(--text-muted)' }}
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px', verticalAlign: 'middle' }}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z" /></svg>
-                              Troubleshoot
-                            </button>
-                            <button
-                              className="text-btn"
+                              className="w-full text-left p-3 text-sm rounded-lg transition-colors text-brand-red hover:bg-brand-red/10 flex items-center gap-3"
                               onClick={() => { handleReport(activeChat); setIsChatMenuOpen(false); }}
-                              style={{ width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: '0.9rem', color: 'var(--error, #ff4444)' }}
                             >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px', verticalAlign: 'middle' }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M12 8v4" /><path d="M12 16h.01" /></svg>
-                              Report
+                              <Lock className="w-4 h-4" />
+                              Report User
                             </button>
-                          </GlassCard>
+                          </div>
                         )}
                       </div>
-                      <StatusBadge status="verified" label="Staked" />
                     </div>
                   </div>
 
                   {showRecipientBio && (
-                    <div className="recipient-bio-overlay animate-in">
-                      <p>{chatMessages[activeChat]?.[0]?.text ? "Bio extracted from AI Match" : "Bio shared via protocol"}</p>
-                      <div className="bio-content">
-                        {matches.find(m => m.matchAddress.toLowerCase() === activeChat.toLowerCase())?.matchBio || "No bio available."}
-                      </div>
+                    <div className="p-4 bg-black/50 border-b border-white/5 animate-in">
+                       <h4 className="text-xs text-brand-red font-bold uppercase tracking-wider mb-2">About Them</h4>
+                       <div className="text-sm text-brand-light leading-relaxed">
+                         {matches.find(m => m.matchAddress.toLowerCase() === activeChat.toLowerCase())?.matchBio || "No bio available."}
+                       </div>
                     </div>
                   )}
 
-                  <GlassCard className="chat-container" style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                    <div className="chat-messages">
-                      {(chatMessages[activeChat] || []).map((msg, i) => (
-                        <div key={i} className={`chat-bubble ${msg.sent ? 'sent' : 'received'}`}>
-                          {msg.text}
-                        </div>
-                      ))}
-                      {/* Instant Reveal Button for Staked High Intent */}
-                      {!revealedUsers.has(activeChat.toLowerCase()) && (
-                        <div className="reveal-overlay-btn">
-                          <button
-                            className="primary-btn"
-                            style={{ width: 'auto', padding: '0.6rem 1.2rem', fontSize: '0.8rem' }}
-                            onClick={() => burnForReveal(activeChat)}
-                          >
-                            🔥 Burn 5 rUSD to Reveal Profile
-                          </button>
-                        </div>
-                      )}
-                      {chatMessages[activeChat]?.length === 0 && !hasActiveStake && (
-                        <div className="empty-chat">
-                          <p>No messages yet. Start the conversation!</p>
-                        </div>
-                      )}
-
-                      {/* Centered Claim Reward Overlay */}
-                      {hasActiveStake && (
-                        <div className="chat-lock-overlay animate-in">
-                          <div className="chat-lock-content">
-                            <div className="lock-icon-large">🎁</div>
-                            <h3>New Connection Reward!</h3>
-                            <p>A user has staked tokens to message you. Claim the tokens to unlock this chat session.</p>
-                            <button
-                              className="primary-btn"
-                              onClick={claimStake}
-                              style={{ width: 'auto', padding: '0.8rem 2rem', marginTop: '1rem', background: 'var(--accent)', color: '#000' }}
-                              disabled={loading}
-                            >
-                              {loading ? "Processing..." : "Claim & Unlock Chat →"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Centered Date Proposed Overlay */}
-                      {dateEscrowStatus?.status === 1 && dateEscrowStatus.userB.toLowerCase() === address?.toLowerCase() && (
-                        <div className="chat-lock-overlay animate-in" style={{ background: 'rgba(10, 10, 10, 0.95)' }}>
-                          <div className="chat-lock-content">
-                            <div className="lock-icon-large">❤️</div>
-                            <h3>Date Proposed!</h3>
-                            <p>Your match has proposed a date escrow meetup. Stake 10 rUSD to confirm.</p>
-                            <button
-                              className="primary-btn"
-                              onClick={() => { setIsPoRLModalOpen(true); }}
-                              style={{ width: 'auto', padding: '0.8rem 2rem', marginTop: '1rem', background: 'var(--accent)', color: '#000' }}
-                            >
-                              Review Proposal →
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className={`chat-input-bar ${hasActiveStake ? 'locked' : ''}`}>
-                      <div style={{ flex: 1, position: 'relative' }}>
-                        <textarea
-                          ref={chatTextareaRef}
-                          className="chat-input"
-                          placeholder={hasActiveStake ? "Claim reward to unlock chat..." : "Type a message..."}
-                          value={chatInput}
-                          onChange={handleChatInputChange}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey && !hasActiveStake) {
-                              e.preventDefault();
-                              sendChat();
-                            }
-                          }}
-                          rows={1}
-                          disabled={hasActiveStake || blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase())}
-                        />
-                        {!hasActiveStake && (
-                          <div className="chat-char-count">
-                            {chatInput.length}/{MAX_CHAT_CHARS}
-                          </div>
-                        )}
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col gap-4 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-brand-dark via-brand-black to-brand-black">
+                    {(chatMessages[activeChat] || []).map((msg, i) => (
+                      <div key={i} className={`max-w-[85%] sm:max-w-[75%] p-5 rounded-3xl text-lg leading-snug break-words shadow-sm ${msg.sent ? 'bg-brand-red text-white self-end rounded-br-sm' : 'bg-brand-dark border border-white/10 text-brand-light self-start rounded-bl-sm'}`}>
+                        {msg.text}
                       </div>
-                      <button
-                        className="chat-send-btn"
-                        onClick={sendChat}
-                        disabled={hasActiveStake || blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase()) || !chatInput.trim()}
-                      >
-                        Send
-                      </button>
-                    </div>
+                    ))}
                     
-                    {blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase()) && (
-                      <div className="chat-lock-overlay animate-in" style={{ 
-                        position: 'absolute', 
-                        top: 0, 
-                        left: 0, 
-                        right: 0, 
-                        bottom: 0, 
-                        background: 'rgba(5, 5, 5, 0.98)', 
-                        zIndex: 99,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}>
-                        <div className="chat-lock-content" style={{ textAlign: 'center' }}>
-                          <div className="lock-icon-large">🚫</div>
-                          <h3>Session Blocked</h3>
-                          <p style={{ maxWidth: '320px', margin: '0.5rem auto 0' }}>An AI-verified conduct violation was detected. Messaging is disabled.</p>
-                        </div>
+                    {/* Instant Reveal Button for Staked High Intent */}
+                    {!revealedUsers.has(activeChat.toLowerCase()) && (
+                      <div className="sticky bottom-0 mt-8 p-4 bg-gradient-to-t from-brand-black via-brand-black/90 to-transparent flex justify-center w-full pb-8">
+                        <button
+                          className="w-full sm:w-auto py-3 px-8 bg-brand-dark border border-brand-red/50 hover:bg-brand-red/20 text-brand-red font-bold rounded-full transition-all flex items-center justify-center gap-2 backdrop-blur-sm"
+                          onClick={() => burnForReveal(activeChat)}
+                        >
+                          <Sparkles className="w-5 h-5" />
+                          Reveal Photos (5 rUSD)
+                        </button>
                       </div>
                     )}
-                  </GlassCard>
+                    
+                    {chatMessages[activeChat]?.length === 0 && !hasActiveStake && (
+                      <div className="h-full flex flex-col items-center justify-center text-center opacity-50 my-10">
+                        <MessageCircle className="w-16 h-16 mb-4 text-brand-light/30" />
+                        <p className="text-brand-light">Break the ice. Say something nice!</p>
+                      </div>
+                    )}
+
+                    {/* Overlays */}
+                    {hasActiveStake && (
+                      <div className="absolute inset-x-0 bottom-24 mx-4 p-6 bg-brand-dark/95 border border-brand-red backdrop-blur-md rounded-2xl flex flex-col items-center text-center shadow-2xl animate-in fade-in slide-in-from-bottom-5">
+                         <div className="w-16 h-16 rounded-full bg-brand-red/20 flex flex-col items-center justify-center mb-4 text-brand-red">
+                           <Gift className="w-8 h-8" />
+                         </div>
+                        <h3 className="text-xl font-bold mb-2">You Have a Matched Stake!</h3>
+                        <p className="text-brand-light/70 text-sm mb-6 max-w-[280px]">They have committed tokens. Claim them to unlock the session.</p>
+                        <button
+                          className="w-full py-3.5 bg-brand-red hover:bg-brand-darkred text-white font-bold rounded-xl transition-all"
+                          onClick={claimStake}
+                          disabled={loading}
+                        >
+                          {loading ? "Processing..." : "Claim & Unlock"}
+                        </button>
+                      </div>
+                    )}
+
+                    {dateEscrowStatus?.status === 1 && dateEscrowStatus.userB.toLowerCase() === address?.toLowerCase() && (
+                       <div className="absolute inset-x-0 bottom-24 mx-4 p-6 bg-brand-dark/95 border border-brand-red backdrop-blur-md rounded-2xl flex flex-col items-center text-center shadow-2xl animate-in fade-in slide-in-from-bottom-5">
+                         <div className="w-16 h-16 rounded-full bg-brand-red/20 flex flex-col items-center justify-center mb-4 text-brand-red">
+                           <img src="/token42.png" alt="Token42" className="w-8 h-8" />
+                         </div>
+                        <h3 className="text-xl font-bold mb-2">Activity Proposed</h3>
+                        <p className="text-brand-light/70 text-sm mb-6 max-w-[280px]">They proposed a verified meetup. Stake 10 rUSD to say yes.</p>
+                        <button
+                          className="w-full py-3.5 bg-brand-red hover:bg-brand-darkred text-white font-bold rounded-xl transition-all"
+                          onClick={() => { setIsPoRLModalOpen(true); }}
+                        >
+                          Review & Accept
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Chat Input */}
+                  <div className="p-4 bg-brand-black border-t border-white/5">
+                    <div className="bg-black/40 border border-white/10 rounded-2xl flex items-end p-2 transition-all focus-within:border-brand-red">
+                      <textarea
+                        ref={chatTextareaRef}
+                        className="flex-1 bg-transparent border-none text-brand-light py-3 px-4 focus:outline-none placeholder:text-brand-light/30 resize-none min-h-[50px] max-h-[150px] text-lg"
+                        placeholder={blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase()) ? "Session restricted" : "Type a message..."}
+                        value={chatInput}
+                        onChange={(e) => {
+                           handleChatInputChange(e);
+                           e.target.style.height = 'auto';
+                           e.target.style.height = e.target.scrollHeight + 'px';
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            sendChat();
+                          }
+                        }}
+                        rows={1}
+                        disabled={blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase())}
+                      />
+                      <button
+                        className="bg-brand-red text-white w-11 h-11 rounded-xl m-1 flex items-center justify-center hover:bg-brand-darkred transition-all shrink-0 disabled:opacity-50 disabled:bg-white/10"
+                        onClick={sendChat}
+                        disabled={!chatInput.trim() || blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase())}
+                      >
+                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ml-1"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {blockedUsers.some(u => u.toLowerCase() === activeChat?.toLowerCase()) && (
+                     <div className="absolute inset-0 bg-brand-black/95 z-50 flex flex-col items-center justify-center p-6 text-center backdrop-blur-sm">
+                        <Shield className="w-16 h-16 text-brand-red mb-4" />
+                        <h3 className="text-2xl font-bold mb-2 text-brand-light">Session Blocked</h3>
+                        <p className="text-brand-light/60 max-w-sm">A conduct violation was detected by AI moderation. Messaging for this session has been disabled.</p>
+                     </div>
+                  )}
                 </>
               ) : (
-                <GlassCard className="chat-container">
-                  <div className="no-chat-selected">
-                    <div className="empty-state-icon">💬</div>
-                    <p>Select a session to start chatting</p>
+                <div className="flex-1 hidden md:flex flex-col items-center justify-center text-center p-12 h-full opacity-50">
+                  <div className="w-24 h-24 rounded-full bg-brand-dark flex items-center justify-center mb-6">
+                     <MessageCircle className="w-10 h-10 text-brand-light/40" />
                   </div>
-                </GlassCard>
+                  <h3 className="text-2xl font-bold mb-2 text-brand-light font-serif">Your Conversations</h3>
+                  <p className="text-brand-light/60 max-w-[300px]">Select a session from the sidebar to continue the connection.</p>
+                </div>
               )}
             </div>
           </div>
@@ -2465,8 +2447,8 @@ function App() {
 
       {/* Footer - hidden on landing */}
       {!isLanding && (
-        <footer className="app-footer">
-          <p>Built on <a href="https://polkadot.network" target="_blank" rel="noopener">Polkadot Asset Hub</a> (Revive EVM) & Phala Network</p>
+        <footer className="mt-auto py-8 text-center text-[#555565] text-[0.85rem] border-t border-[rgba(255,255,255,0.05)]">
+          <p>Built on <a href="https://polkadot.network" target="_blank" rel="noopener" className="text-[#8888A0] no-underline hover:text-[#00FFCC]">Polkadot Asset Hub</a> (Revive EVM) & Phala Network</p>
         </footer>
       )}
 
@@ -2491,41 +2473,31 @@ function App() {
         />
       )}
       {isMatchLockModalOpen && (
-        <div className="modal-overlay">
-          <GlassCard className="modal-content animate-in" style={{ textAlign: 'center', padding: '2.5rem' }}>
-            <div style={{
-              width: '64px',
-              height: '64px',
-              background: 'rgba(255, 51, 102, 0.1)',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1.5rem',
-              color: 'var(--primary)'
-            }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-5 bg-black/60 backdrop-blur-sm animate-in">
+          <GlassCard className="max-w-[450px] w-full text-center p-10 flex flex-col items-center">
+            <div className="w-[72px] h-[72px] bg-[#D94A56]/10 rounded-full flex items-center justify-center mb-6 text-[#D94A56]">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
             </div>
-            <h2 style={{ marginBottom: '0.5rem' }}>Discovery Locked</h2>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', lineHeight: 1.6 }}>
-              Our AI Matchmaker needs to know you first! Complete the following in the <strong>Profile</strong> tab to unlock discovery:
+            <h2 className="text-2xl font-bold mb-2 text-[#3A232A]">Discovery Locked</h2>
+            <p className="text-[#8E757E] text-sm leading-relaxed mb-8">
+              Your Personal Cupid needs to know you first! Complete the following in the <strong>Profile</strong> tab to unlock discovery:
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left', marginBottom: '2.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ color: profile.name ? 'var(--accent)' : 'var(--text-muted)' }}>{profile.name ? '✅' : '🔴'}</span>
-                <span style={{ opacity: profile.name ? 1 : 0.6 }}>Display Name</span>
+            <div className="w-full flex flex-col gap-3 text-left mb-10">
+              <div className={`flex items-center gap-3 p-3 rounded-xl border border-black/5 ${profile.name ? 'bg-[#D94A56]/10' : 'bg-white/50'}`}>
+                <span className="text-lg">{profile.name ? '✅' : '🔴'}</span>
+                <span className={`text-[0.95rem] font-medium ${profile.name ? 'text-[#3A232A]' : 'text-[#8E757E]'}`}>Display Name</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ color: profile.bio ? 'var(--accent)' : 'var(--text-muted)' }}>{profile.bio ? '✅' : '🔴'}</span>
-                <span style={{ opacity: profile.bio ? 1 : 0.6 }}>Bio Description</span>
+              <div className={`flex items-center gap-3 p-3 rounded-xl border border-black/5 ${profile.bio ? 'bg-[#D94A56]/10' : 'bg-white/50'}`}>
+                <span className="text-lg">{profile.bio ? '✅' : '🔴'}</span>
+                <span className={`text-[0.95rem] font-medium ${profile.bio ? 'text-[#3A232A]' : 'text-[#8E757E]'}`}>Bio Description</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ color: profile.avatar ? 'var(--accent)' : 'var(--text-muted)' }}>{profile.avatar ? '✅' : '🔴'}</span>
-                <span style={{ opacity: profile.avatar ? 1 : 0.6 }}>Profile Photo</span>
+              <div className={`flex items-center gap-3 p-3 rounded-xl border border-black/5 ${profile.avatar ? 'bg-[#D94A56]/10' : 'bg-white/50'}`}>
+                <span className="text-lg">{profile.avatar ? '✅' : '🔴'}</span>
+                <span className={`text-[0.95rem] font-medium ${profile.avatar ? 'text-[#3A232A]' : 'text-[#8E757E]'}`}>Profile Photo</span>
               </div>
             </div>
             <button
-              className="primary-btn"
+              className="w-full py-3.5 px-6 bg-gradient-to-br from-[#D94A56] to-[#E58A8A] border-none text-white font-bold rounded-full cursor-pointer shadow-[0_4px_15px_rgba(217,74,86,0.3)] transition-all duration-300 hover:-translate-y-0.5"
               onClick={() => {
                 setIsMatchLockModalOpen(false);
                 setStep('profile');
@@ -2534,8 +2506,7 @@ function App() {
               Go to Profile →
             </button>
             <button
-              className="text-btn"
-              style={{ marginTop: '1rem', color: 'var(--text-muted)' }}
+              className="mt-4 bg-transparent border-none text-brand-light/50 font-medium cursor-pointer hover:text-brand-light transition-colors"
               onClick={() => setIsMatchLockModalOpen(false)}
             >
               Close
@@ -2543,6 +2514,7 @@ function App() {
           </GlassCard>
         </div>
       )}
+      </div>
     </div>
   );
 }
