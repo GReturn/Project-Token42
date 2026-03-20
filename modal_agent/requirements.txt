@@ -1,0 +1,6 @@
+modal==0.62.90
+web3==6.15.1
+fastapi
+eth-account==0.11.0
+sentence-transformers
+requests
